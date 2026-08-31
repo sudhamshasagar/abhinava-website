@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Noto+Sans+Kannada:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;500;600&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --color-ivory: #f8f5ee;
+  --color-paper: #fcfaf6;
+  --color-charcoal: #24231f;
+  --color-gold: #9a8050;
+  --color-gold-light: #b29a6d;
+  --color-sand: #eee8dc;
+  --color-muted: #706c63;
+  --color-border: #ded8cc;
+
+  --font-display: "Cormorant Garamond", "Noto Serif Kannada", Georgia, serif;
+  --font-body: "Inter", "Noto Sans Kannada", "Noto Sans Devanagari", system-ui, sans-serif;
+}
+
+:root {
+  font-family: var(--font-body);
+  color: var(--color-charcoal);
+  background: var(--color-ivory);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--color-ivory);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--color-ivory);
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(154, 128, 80, 0.2);
+}
+
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+* {
+  scrollbar-width: none;
+}
