@@ -1,12 +1,23 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { ArrowUpRight } from 'lucide-react'
+
 import Navigation from './components/Navigation'
+import Footer from './components/Footer'
+
 import Hero from './sections/Hero'
 import Mission from './sections/Mission'
 import HealthcareCommitment from './sections/HealthcareCommitment'
 import Services from './sections/Services'
 import Projects from './sections/Projects'
 import Testimonials from './sections/Testimonials'
-import Footer from './components/Footer'
+
+import AdminLogin from './admin/AdminLogin'
+import AdminLayout from './admin/AdminLayout'
+import AdminDashboard from './admin/AdminDashboard'
+import ProjectManagement from './admin/ProjectManagement'
+import AdminPlaceholder from './admin/AdminPlaceholder'
+
+import { useAuth } from './context/AuthContext'
 
 function Home() {
   return (
@@ -15,66 +26,67 @@ function Home() {
 
       <main>
         <Hero />
-
         <Services />
-
-        <section
-          id="work"
-          className="flex min-h-[50vh] items-center justify-center bg-paper px-6"
-        >
-          <div className="text-center">
-            <p className="text-xs uppercase tracking-[0.35em] text-gold">
-              Our Work
-            </p>
-
-            <h2 className="mt-5 font-display text-4xl sm:text-5xl">
-              Work that speaks for itself.
-            </h2>
-
-            <p className="mx-auto mt-5 max-w-xl text-charcoal/55">
-              Explore the websites, software and digital solutions we have
-              built along the way.
-            </p>
-          </div>
-        </section>
-
-        <Mission />
-
+        <Projects />
         <HealthcareCommitment />
-        <Projects/>
         <Testimonials />
-
-        <section
-          id="contact"
-          className="flex min-h-[45vh] items-center justify-center bg-charcoal px-6 text-center text-ivory"
-        >
-          <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-gold-light">
-              Have a project?
-            </p>
-
-            <h2 className="mt-5 font-display text-5xl sm:text-6xl">
-              Let&apos;s build it.
-            </h2>
-
-            <p className="mx-auto mt-6 max-w-lg text-ivory/60">
-              Tell us what you are trying to build, improve or automate.
-            </p>
-          </div>
-        </section>
-        <Footer/>
       </main>
+
+      <Footer />
     </div>
   )
 }
 
+function ProtectedAdmin({ children }) {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      // A premium, breathing loader instead of a generic spinning circle
+      <main className="flex min-h-screen flex-col items-center justify-center bg-ivory px-6 text-charcoal">
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative flex h-8 w-8 items-center justify-center">
+            <span className="absolute h-full w-full animate-ping rounded-full bg-charcoal/10 opacity-75"></span>
+            <span className="relative h-2 w-2 rounded-full bg-charcoal/40"></span>
+          </div>
+          <p className="text-[10px] font-medium uppercase tracking-[0.25em] text-charcoal/40">
+            Authenticating
+          </p>
+        </div>
+      </main>
+    )
+  }
+
+  if (!user) {
+    return <Navigate to="/admin/login" replace />
+  }
+
+  return children
+}
+
 function NotFound() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-ivory text-charcoal">
-      <div className="text-center">
-        <p className="font-display text-6xl">404</p>
-        <p className="mt-3 text-charcoal/50">Page not found.</p>
+    // An art-gallery style 404 page. Massive, faint numbers with elegant serif typography.
+    <main className="flex min-h-screen flex-col items-center justify-center bg-ivory px-6 text-center text-charcoal sm:px-8">
+      <h1 className="font-display text-[8rem] font-light leading-none tracking-tighter text-charcoal/5 sm:text-[14rem]">
+        404
+      </h1>
+      
+      <div className="-mt-6 sm:-mt-10">
+        <p className="font-serif text-2xl font-medium italic text-charcoal sm:text-3xl">
+          Page not found.
+        </p>
+        <p className="mx-auto mt-4 max-w-sm text-sm leading-relaxed text-charcoal/60">
+          The page you are looking for doesn't exist, has been moved, or is currently unavailable.
+        </p>
       </div>
+
+      <a
+        href="/"
+        className="mt-10 inline-flex items-center gap-2 border-b border-charcoal/20 pb-1 text-sm font-medium text-charcoal transition-colors hover:border-charcoal"
+      >
+        Return to Homepage
+      </a>
     </main>
   )
 }
@@ -83,7 +95,30 @@ export default function App() {
   return (
     <BrowserRouter basename="/abhinava-website">
       <Routes>
+        {/* Public Website */}
         <Route path="/" element={<Home />} />
+
+        {/* Admin Login */}
+        <Route path="/admin/login" element={<AdminLogin />} />
+
+        {/* Protected Admin */}
+        <Route
+          path="/admin"
+          element={
+            <ProtectedAdmin>
+              <AdminLayout />
+            </ProtectedAdmin>
+          }
+        >
+          <Route index element={<AdminDashboard />} />
+          <Route path="projects" element={<ProjectManagement />} />
+          <Route path="testimonials" element={<AdminPlaceholder />} />
+          <Route path="services" element={<AdminPlaceholder />} />
+          <Route path="ledger" element={<AdminPlaceholder />} />
+          <Route path="footer" element={<AdminPlaceholder />} />
+        </Route>
+
+        {/* 404 */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>

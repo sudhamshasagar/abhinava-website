@@ -27,33 +27,38 @@ const testimonials = [
 
 export default function Testimonials() {
   return (
-    <section id="testimonials" className="bg-paper">
-      <div className="mx-auto max-w-7xl px-6 py-28 sm:px-8 lg:px-12 lg:py-36">
+    <section id="testimonials" className="bg-paper py-24 sm:py-32 lg:py-40">
+      <div className="mx-auto w-full max-w-7xl px-6 sm:px-8 lg:px-12">
 
-        {/* Heading */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.8 }}
-          className="max-w-3xl"
-        >
-          <p className="text-xs font-medium uppercase tracking-[0.35em] text-gold">
-            Client voices
-          </p>
+        {/* ==========================================
+            HEADER
+        ========================================== */}
+        <div className="mx-auto mb-16 flex max-w-2xl flex-col items-center text-center sm:mb-20">
+          <motion.p
+            initial={{ opacity: 0, y: 15 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.8 }}
+            transition={{ duration: 0.8 }}
+            className="mb-4 text-[10px] font-semibold uppercase tracking-[0.25em] text-charcoal/40"
+          >
+            Client Voices
+          </motion.p>
 
-          <h2 className="mt-6 font-display text-4xl leading-tight sm:text-5xl lg:text-6xl">
-            Trust is built through the work.
-          </h2>
+          <motion.h2
+            initial={{ opacity: 0, y: 15 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.8 }}
+            transition={{ duration: 0.8, delay: 0.1 }}
+            className="font-display text-3xl font-medium tracking-tight text-charcoal sm:text-4xl lg:text-5xl [text-wrap:balance]"
+          >
+            Trust is built <span className="font-serif italic text-charcoal/70">through the work.</span>
+          </motion.h2>
+        </div>
 
-          <p className="mt-6 max-w-2xl text-base leading-8 text-charcoal/60 sm:text-lg">
-            We value the people and organizations who have trusted us with
-            their ideas, challenges and projects.
-          </p>
-        </motion.div>
-
-        {/* Testimonials */}
-        <div className="mt-16 grid gap-px overflow-hidden border border-border bg-border md:grid-cols-3">
+        {/* ==========================================
+            EDITORIAL ASYMMETRICAL SPREAD (All visible at once)
+        ========================================== */}
+        <div className="grid gap-8 lg:grid-cols-3 lg:gap-10">
           {testimonials.map((testimonial, index) => (
             <motion.article
               key={`${testimonial.name}-${index}`}
@@ -62,46 +67,71 @@ export default function Testimonials() {
               viewport={{ once: true, amount: 0.2 }}
               transition={{
                 duration: 0.7,
-                delay: index * 0.08,
+                delay: index * 0.1,
               }}
-              className="flex min-h-[360px] flex-col bg-ivory p-8 sm:p-10"
+              /* 
+                Each card uses a distinct architectural layout:
+                - Card 01: Clean minimal glass panel
+                - Card 02: Slightly elevated / darker tint to break monotony
+                - Card 03: Outlined bordered aesthetic
+              */
+              className={`relative flex flex-col justify-between p-8 sm:p-10 transition-all duration-500 hover:-translate-y-1 ${
+                index === 1 
+                  ? 'rounded-3xl bg-charcoal text-ivory shadow-xl shadow-charcoal/10 lg:-translate-y-4' 
+                  : 'rounded-3xl border border-charcoal/10 bg-white/50 backdrop-blur-sm'
+              }`}
             >
-              <Quote
-                size={28}
-                strokeWidth={1}
-                className="text-gold"
-              />
+              <div>
+                {/* Quote Icon */}
+                <div className="mb-6">
+                  <Quote 
+                    size={28} 
+                    strokeWidth={1.2} 
+                    className={index === 1 ? 'text-ivory/30' : 'text-charcoal/30'} 
+                  />
+                </div>
 
-              <blockquote className="mt-8 flex-1 font-display text-2xl leading-relaxed text-charcoal sm:text-[1.7rem]">
-                “{testimonial.quote}”
-              </blockquote>
+                {/* Quote Text */}
+                <blockquote className={`font-display text-lg leading-relaxed sm:text-xl [text-wrap:pretty] ${
+                  index === 1 ? 'text-ivory/90' : 'text-charcoal/80'
+                }`}>
+                  “{testimonial.quote}”
+                </blockquote>
+              </div>
 
-              <div className="mt-10 border-t border-border pt-6">
-                <p className="text-sm font-medium text-charcoal">
+              {/* Author Footer */}
+              <div className={`mt-10 border-t pt-6 ${
+                index === 1 ? 'border-ivory/15' : 'border-charcoal/10'
+              }`}>
+                <p className={`font-serif text-base font-medium ${
+                  index === 1 ? 'text-ivory' : 'text-charcoal'
+                }`}>
                   {testimonial.name}
                 </p>
 
-                <p className="mt-1 text-xs tracking-wide text-charcoal/45">
-                  {testimonial.role}
-                </p>
-
-                <p className="mt-1 text-xs tracking-wide text-gold">
-                  {testimonial.company}
-                </p>
+                <div className="mt-1 flex items-center gap-2 text-xs">
+                  <span className={index === 1 ? 'text-ivory/50' : 'text-charcoal/50'}>
+                    {testimonial.role}
+                  </span>
+                  <span className={index === 1 ? 'text-ivory/30' : 'text-charcoal/30'}>•</span>
+                  <span className={`font-medium ${index === 1 ? 'text-ivory/80' : 'text-charcoal/80'}`}>
+                    {testimonial.company}
+                  </span>
+                </div>
               </div>
             </motion.article>
           ))}
         </div>
 
-        {/* Closing statement */}
+        {/* Closing Statement */}
         <motion.div
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-          className="mt-12 text-center"
+          transition={{ duration: 0.8, delay: 0.3 }}
+          className="mt-16 text-center"
         >
-          <p className="font-display text-xl italic text-charcoal/55 sm:text-2xl">
+          <p className="font-display text-sm tracking-widest uppercase text-charcoal/40 sm:text-base">
             Every project begins with trust.
           </p>
         </motion.div>
