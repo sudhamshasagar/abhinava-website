@@ -93,7 +93,7 @@ function NotFound() {
 
 export default function App() {
   return (
-    <BrowserRouter basename="/abhinava-website">
+    <BrowserRouter>
       <Routes>
         {/* Public Website */}
         <Route path="/" element={<Home />} />

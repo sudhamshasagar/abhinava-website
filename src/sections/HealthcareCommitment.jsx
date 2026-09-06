@@ -24,7 +24,7 @@ const journeySteps = [
 ]
 
 export default function HealthcareCommitment() {
-  const [isExpanded, setIsExpanded] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(true)
 
   return (
     <article id="healthcare" className="bg-sand relative overflow-hidden py-24 sm:py-32 lg:py-20">
