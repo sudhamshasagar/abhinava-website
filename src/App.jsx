@@ -15,6 +15,7 @@ import AdminLogin from './admin/AdminLogin'
 import AdminLayout from './admin/AdminLayout'
 import AdminDashboard from './admin/AdminDashboard'
 import ProjectManagement from './admin/ProjectManagement'
+import TestimonialManagement from './admin/TestimonialManagement'
 import AdminPlaceholder from './admin/AdminPlaceholder'
 
 import { useAuth } from './context/AuthContext'
@@ -112,6 +113,7 @@ export default function App() {
         >
           <Route index element={<AdminDashboard />} />
           <Route path="projects" element={<ProjectManagement />} />
+          <Route path="testimonials" element={<TestimonialManagement/>}/>
           <Route path="testimonials" element={<AdminPlaceholder />} />
           <Route path="services" element={<AdminPlaceholder />} />
           <Route path="ledger" element={<AdminPlaceholder />} />

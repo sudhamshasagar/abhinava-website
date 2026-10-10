@@ -1,128 +1,140 @@
+import { Link } from 'react-router-dom'
 import {
   FolderKanban,
   MessageSquareQuote,
   HeartHandshake,
   BriefcaseBusiness,
+  PanelBottom,
   ArrowUpRight,
+  ShieldCheck,
+  Sparkles,
 } from 'lucide-react'
 
 const sections = [
   {
     title: 'Projects',
-    description:
-      'Manage the projects presented across the Abhinava portfolio.',
+    description: 'Manage case studies, tech stacks, and live deployments.',
     path: '/admin/projects',
     icon: FolderKanban,
+    tag: 'Portfolio',
   },
   {
     title: 'Testimonials',
-    description:
-      'Manage client testimonials and their public visibility.',
+    description: 'Control client quotes, author credentials, and visibility.',
     path: '/admin/testimonials',
     icon: MessageSquareQuote,
+    tag: 'Reputation',
   },
   {
     title: 'What We Do',
-    description:
-      'Manage the services and capabilities presented by Abhinava.',
+    description: 'Define services, capabilities, and business offerings.',
     path: '/admin/services',
     icon: BriefcaseBusiness,
+    tag: 'Capabilities',
   },
   {
     title: 'Healthcare Ledger',
-    description:
-      'Manage healthcare allocations, utilisation and supporting records.',
+    description: 'Track 70% community allocations and financial records.',
     path: '/admin/ledger',
     icon: HeartHandshake,
+    tag: 'Commitment',
+  },
+  {
+    title: 'Footer Settings',
+    description: 'Manage legal notices, social handles, and contact points.',
+    path: '/admin/footer',
+    icon: PanelBottom,
+    tag: 'Navigation',
   },
 ]
 
 export default function AdminDashboard() {
   return (
-    <div className="min-h-screen px-6 py-8 sm:px-8 lg:px-10">
+    <div className="min-h-full px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl space-y-6">
 
-      <div className="mx-auto max-w-7xl">
+        {/* COMPACT HEADER */}
+        <header className="flex flex-col gap-2 border-b border-black/[0.08] pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="flex items-center gap-1.5">
+              <Sparkles size={12} className="text-[#9b7a42]" />
+              <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.25em] text-[#9b7a42]">
+                Control Hub
+              </span>
+            </div>
+            <h1 className="mt-1 font-display text-2xl font-medium tracking-tight text-[#242321] sm:text-3xl">
+              Overview & Modules
+            </h1>
+          </div>
 
-        {/* Header */}
-        <div className="border-b border-black/10 pb-8">
-
-          <p className="text-[10px] uppercase tracking-[0.3em] text-[#9b7a42]">
-            Abhinava Administration
+          <p className="max-w-md text-xs text-black/50 sm:text-right">
+            Manage publication channels, content directories, and live data records.
           </p>
+        </header>
 
-          <h1 className="mt-3 font-display text-4xl sm:text-5xl">
-            Dashboard
-          </h1>
-
-          <p className="mt-3 max-w-xl text-sm leading-6 text-black/45">
-            Manage the content and information that powers the Abhinava
-            digital presence.
-          </p>
-
-        </div>
-
-
-        {/* Management sections */}
-        <div className="mt-10 grid gap-5 md:grid-cols-2">
-
+        {/* COMPACT SECTION TILES */}
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           {sections.map((section) => {
             const Icon = section.icon
 
             return (
-              <a
+              <Link
                 key={section.title}
-                href={section.path}
-                className="group rounded-2xl border border-black/10 bg-white p-7 transition-all duration-300 hover:-translate-y-0.5 hover:border-black/20 hover:shadow-lg"
+                to={section.path}
+                className="group relative flex flex-col justify-between rounded-xl border border-black/[0.08] bg-white p-4 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:border-[#c6a15b]/60 hover:shadow-sm sm:p-5"
               >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#f0ede6] text-[#242321] transition-colors group-hover:bg-[#242321] group-hover:text-white">
+                      <Icon size={16} strokeWidth={1.5} />
+                    </div>
 
-                <div className="flex items-start justify-between">
-
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#f0ede6]">
-                    <Icon
-                      size={19}
-                      strokeWidth={1.4}
-                    />
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-[8px] uppercase tracking-wider text-black/40">
+                        {section.tag}
+                      </span>
+                      <ArrowUpRight
+                        size={14}
+                        className="text-black/30 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-black"
+                      />
+                    </div>
                   </div>
 
-                  <ArrowUpRight
-                    size={18}
-                    strokeWidth={1.4}
-                    className="text-black/25 transition-transform duration-300 group-hover:-translate-y-1 group-hover:translate-x-1 group-hover:text-black"
-                  />
+                  <h2 className="mt-4 font-display text-lg font-medium text-[#242321]">
+                    {section.title}
+                  </h2>
 
+                  <p className="mt-1.5 text-xs leading-relaxed text-black/50">
+                    {section.description}
+                  </p>
                 </div>
 
-                <h2 className="mt-8 font-display text-2xl">
-                  {section.title}
-                </h2>
-
-                <p className="mt-3 max-w-md text-sm leading-6 text-black/45">
-                  {section.description}
-                </p>
-
-              </a>
+                <div className="mt-4 flex items-center gap-1 border-t border-black/[0.04] pt-2.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#9b7a42] transition-colors group-hover:text-[#242321]">
+                  <span>Open Module</span>
+                  <span>→</span>
+                </div>
+              </Link>
             )
           })}
-
         </div>
 
+        {/* PRINCIPLE STRIP */}
+        <div className="flex items-start gap-3 rounded-xl border border-[#9b7a42]/20 bg-[#f0ede6]/60 p-4 sm:items-center sm:p-4.5">
+          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#9b7a42]/15 text-[#9b7a42] sm:mt-0">
+            <ShieldCheck size={16} strokeWidth={1.8} />
+          </div>
 
-        {/* Principle */}
-        <div className="mt-8 rounded-2xl border border-[#9b7a42]/15 bg-[#f0ede6] p-7">
-
-          <p className="text-[10px] uppercase tracking-[0.3em] text-[#9b7a42]">
-            Administration Principle
-          </p>
-
-          <p className="mt-4 max-w-3xl font-display text-2xl leading-relaxed text-black/70 sm:text-3xl">
-            What is published here should be accurate, transparent and
-            worthy of the trust placed in Abhinava.
-          </p>
-
+          <div className="flex-1">
+            <span className="font-mono text-[8px] font-bold uppercase tracking-[0.2em] text-[#9b7a42]">
+              Administrative Standard
+            </span>
+            <p className="mt-0.5 text-xs leading-relaxed text-black/70 sm:text-[13px]">
+              What is published here should be accurate, transparent, and worthy of the trust placed in Abhinava.
+            </p>
+          </div>
         </div>
 
       </div>
-
     </div>
   )
 }

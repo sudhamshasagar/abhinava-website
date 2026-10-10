@@ -12,49 +12,31 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  Maximize2,
+  Images,
+  Cpu,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { getPublishedProjects } from '../firebase/projects'
 
-function getYouTubeEmbedUrl(url) {
-  if (!url) return null
+/* -------------------------------------------------------------------------- */
+/*                               Helper Methods                               */
+/* -------------------------------------------------------------------------- */
 
-  try {
-    const parsed = new URL(url)
+function getYouTubeEmbedUrl(url, autoplay = true) {
+  if (!url || typeof url !== 'string') return null
+  const formattedUrl = url.trim().startsWith('http') ? url.trim() : `https://${url.trim()}`
+  const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts|live)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i
+  const match = formattedUrl.match(regExp)
 
-    if (parsed.hostname.includes('youtu.be')) {
-      const id = parsed.pathname.replace('/', '')
-      return id
-        ? `https://www.youtube.com/embed/${id}`
-        : null
-    }
-
-    if (parsed.hostname.includes('youtube.com')) {
-      const id = parsed.searchParams.get('v')
-
-      if (id) {
-        return `https://www.youtube.com/embed/${id}`
-      }
-
-      if (parsed.pathname.startsWith('/embed/')) {
-        return url
-      }
-    }
-
-    return null
-  } catch {
-    return null
+  if (match && match[1]) {
+    return `https://www.youtube.com/embed/${match[1]}${autoplay ? '?autoplay=1' : ''}`
   }
+  return null
 }
 
 function formatCurrency(value) {
   const amount = Number(value)
-
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return null
-  }
-
+  if (!Number.isFinite(amount) || amount <= 0) return null
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
@@ -62,171 +44,22 @@ function formatCurrency(value) {
   }).format(amount)
 }
 
-function getOrientation(src) {
-  return new Promise((resolve) => {
-    const image = new Image()
+/* -------------------------------------------------------------------------- */
+/*                                Modals & UI                                 */
+/* -------------------------------------------------------------------------- */
 
-    image.onload = () => {
-      const ratio =
-        image.naturalWidth / image.naturalHeight
-
-      if (ratio > 1.35) {
-        resolve('landscape')
-      } else if (ratio < 0.78) {
-        resolve('portrait')
-      } else {
-        resolve('square')
-      }
-    }
-
-    image.onerror = () => resolve('landscape')
-    image.src = src
-  })
-}
-
-function ProjectImages({ project, onOpen }) {
-  const images = Array.isArray(project.images)
-    ? project.images.filter(Boolean)
-    : []
-
-  const [orientations, setOrientations] = useState({})
-
+function Lightbox({ images, index, onClose, onNext, onPrevious }) {
   useEffect(() => {
-    let mounted = true
-
-    async function detect() {
-      const result = {}
-
-      await Promise.all(
-        images.map(async (image) => {
-          result[image] = await getOrientation(image)
-        }),
-      )
-
-      if (mounted) {
-        setOrientations(result)
-      }
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowRight') onNext()
+      if (e.key === 'ArrowLeft') onPrevious()
     }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose, onNext, onPrevious])
 
-    if (images.length) {
-      detect()
-    }
-
-    return () => {
-      mounted = false
-    }
-  }, [project.id])
-
-  if (!images.length) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center bg-[#e9e4da]">
-        <div className="text-center">
-          <Layers
-            size={28}
-            strokeWidth={1}
-            className="mx-auto text-[#242321]/20"
-          />
-
-          <p className="mt-4 text-[9px] uppercase tracking-[0.3em] text-[#242321]/30">
-            Project Preview
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  const primary = images[0]
-  const secondary = images.slice(1, 4)
-
-  return (
-    <div className="space-y-4">
-      <button
-        type="button"
-        onClick={() => onOpen(0)}
-        className="group relative block w-full overflow-hidden bg-[#e9e4da]"
-      >
-        <div
-          className={`flex items-center justify-center ${
-            orientations[primary] === 'portrait'
-              ? 'min-h-[500px]'
-              : orientations[primary] === 'square'
-                ? 'aspect-square'
-                : 'min-h-[300px] sm:min-h-[440px]'
-          }`}
-        >
-          <img
-            src={primary}
-            alt={`${project.name} primary`}
-            className="max-h-[650px] w-full object-contain transition-transform duration-700 group-hover:scale-[1.015]"
-          />
-        </div>
-
-        <div className="absolute inset-0 flex items-end justify-between bg-gradient-to-t from-black/45 via-transparent to-transparent p-5 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-          <span className="text-[9px] uppercase tracking-[0.28em] text-white">
-            Open gallery
-          </span>
-
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#242321]">
-            <Maximize2 size={14} />
-          </span>
-        </div>
-      </button>
-
-      {secondary.length > 0 && (
-        <div className="grid grid-cols-2 gap-4">
-          {secondary.map((image, index) => (
-            <button
-              key={`${image}-${index}`}
-              type="button"
-              onClick={() => onOpen(index + 1)}
-              className="group relative overflow-hidden bg-[#e9e4da]"
-            >
-              <div className="aspect-[4/3] flex items-center justify-center">
-                <img
-                  src={image}
-                  alt={`${project.name} ${index + 2}`}
-                  className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
-                />
-              </div>
-
-              <div className="absolute inset-0 flex items-end justify-between bg-gradient-to-t from-black/40 to-transparent p-3 opacity-0 transition-opacity group-hover:opacity-100">
-                <span className="font-mono text-[8px] text-white">
-                  {String(index + 2).padStart(2, '0')}
-                </span>
-
-                <Maximize2
-                  size={12}
-                  className="text-white"
-                />
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {images.length > 4 && (
-        <button
-          type="button"
-          onClick={() => onOpen(4)}
-          className="w-full border border-black/10 py-3 text-[9px] font-semibold uppercase tracking-[0.25em] text-[#242321]/50 transition-colors hover:bg-[#242321] hover:text-white"
-        >
-          View all {images.length} images
-        </button>
-      )}
-    </div>
-  )
-}
-
-function Lightbox({
-  images,
-  index,
-  onClose,
-  onNext,
-  onPrevious,
-}) {
-  if (index === null || !images.length) {
-    return null
-  }
+  if (index === null || !images?.length) return null
 
   return (
     <AnimatePresence>
@@ -234,24 +67,26 @@ function Lightbox({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4 sm:p-8"
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-[#151413]/95 backdrop-blur-md p-4 sm:p-8"
         onClick={onClose}
       >
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-5 top-5 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white"
+          className="absolute right-5 top-5 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors hover:bg-white/25"
+          aria-label="Close modal"
         >
-          <X size={18} />
+          <X size={16} />
         </button>
 
         <button
           type="button"
-          onClick={(event) => {
-            event.stopPropagation()
+          onClick={(e) => {
+            e.stopPropagation()
             onPrevious()
           }}
-          className="absolute left-5 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white sm:flex"
+          className="absolute left-3 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors hover:bg-white/25 sm:left-6"
+          aria-label="Previous image"
         >
           <ChevronLeft size={20} />
         </button>
@@ -259,306 +94,228 @@ function Lightbox({
         <motion.img
           key={images[index]}
           src={images[index]}
-          alt={`Project image ${index + 1}`}
+          alt={`Preview ${index + 1}`}
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="max-h-[88vh] max-w-[92vw] object-contain"
-          onClick={(event) => event.stopPropagation()}
+          className="max-h-[82vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
         />
 
         <button
           type="button"
-          onClick={(event) => {
-            event.stopPropagation()
+          onClick={(e) => {
+            e.stopPropagation()
             onNext()
           }}
-          className="absolute right-5 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white sm:flex"
+          className="absolute right-3 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors hover:bg-white/25 sm:right-6"
+          aria-label="Next image"
         >
           <ChevronRight size={20} />
         </button>
 
-        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-4 py-2 font-mono text-[9px] text-white/60">
-          {String(index + 1).padStart(2, '0')} /{' '}
-          {String(images.length).padStart(2, '0')}
+        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-full border border-white/15 bg-black/60 px-4 py-1 font-mono text-[10px] tracking-widest text-white/80">
+          {String(index + 1).padStart(2, '0')} / {String(images.length).padStart(2, '0')}
         </div>
       </motion.div>
     </AnimatePresence>
   )
 }
 
-function Stat({ icon: Icon, label, value }) {
-  if (!value) return null
+function VideoModal({ videoUrl, title, onClose }) {
+  if (!videoUrl) return null
 
   return (
-    <div>
-      <div className="flex items-center gap-2 text-[#242321]/30">
-        <Icon size={13} strokeWidth={1.3} />
-        <span className="text-[8px] uppercase tracking-[0.25em]">
-          {label}
-        </span>
-      </div>
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 sm:p-8"
+        onClick={onClose}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-5 top-5 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white hover:bg-white/25"
+          aria-label="Close video"
+        >
+          <X size={16} />
+        </button>
 
-      <p className="mt-2 text-xs font-medium text-[#242321]">
-        {value}
-      </p>
-    </div>
+        <div
+          className="relative aspect-video w-full max-w-3xl overflow-hidden rounded-xl border border-white/10 bg-black shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <iframe
+            src={videoUrl}
+            title={`${title} walkthrough`}
+            className="h-full w-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      </motion.div>
+    </AnimatePresence>
   )
 }
 
-function CaseStudy({
-  project,
-  index,
-  onOpenImage,
-}) {
-  const videoUrl = getYouTubeEmbedUrl(
-    project.youtubeUrl,
-  )
+/* -------------------------------------------------------------------------- */
+/*                            Compact Project Card                            */
+/* -------------------------------------------------------------------------- */
 
-  const healthcareAmount = formatCurrency(
-    project.healthcareAllocation,
-  )
-
-  const techStack = Array.isArray(project.techStack)
-    ? project.techStack
-    : []
+function MiniProjectCard({ project, index, onOpenGallery, onOpenVideo }) {
+  const images = Array.isArray(project.images) ? project.images.filter(Boolean) : []
+  const techStack = Array.isArray(project.techStack) ? project.techStack : []
+  const healthcareAmount = formatCurrency(project.healthcareAllocation)
+  const videoUrl = getYouTubeEmbedUrl(project.youtubeUrl)
+  const isHealthcare = project.healthcareStatus && project.healthcareStatus !== 'not-applicable'
 
   return (
-    <article className="relative">
-      {/* Editorial number */}
-      <div className="mb-8 flex items-center gap-4">
-        <span className="font-mono text-[10px] tracking-[0.25em] text-[#242321]/25">
-          {String(index + 1).padStart(2, '0')}
-        </span>
-
-        <span className="h-px w-10 bg-[#c6a15b]" />
-
-        <span className="text-[9px] font-semibold uppercase tracking-[0.3em] text-[#9b7837]">
-          {project.category || 'Selected work'}
-        </span>
-      </div>
-
-      {/* Main magazine spread */}
-      <div
-        className={`grid gap-10 lg:grid-cols-12 lg:gap-14 ${
-          index % 2 === 1
-            ? 'lg:[&>div:first-child]:order-2'
-            : ''
-        }`}
-      >
-        {/* Text */}
-        <div className="flex flex-col justify-between lg:col-span-4">
-          <div>
-            <h3 className="font-display text-4xl font-normal leading-[0.95] tracking-[-0.035em] sm:text-5xl lg:text-6xl">
-              {project.name}
-            </h3>
-
-            <p className="mt-5 text-[10px] font-medium uppercase tracking-[0.18em] text-[#242321]/35">
-              {project.category ||
-                'Digital product'}
-            </p>
-
-            <div className="mt-8 h-px w-12 bg-[#c6a15b]" />
-
-            <p className="mt-7 text-sm leading-7 text-[#242321]/60 sm:text-base sm:leading-8">
-              {project.description ||
-                'A carefully engineered digital experience built around real business requirements.'}
-            </p>
-
-            {project.originNote && (
-              <p className="mt-6 border-l border-[#c6a15b] pl-4 text-[10px] leading-5 text-[#242321]/40">
-                {project.originNote}
-              </p>
-            )}
-
-            {/* Technology */}
-            {techStack.length > 0 && (
-              <div className="mt-9">
-                <p className="text-[8px] font-semibold uppercase tracking-[0.28em] text-[#242321]/30">
-                  Technology
-                </p>
-
-                <div className="mt-4 space-y-2">
-                  {techStack.map((tech, techIndex) => (
-                    <div
-                      key={`${tech}-${techIndex}`}
-                      className="flex items-center gap-3"
-                    >
-                      <span className="h-px w-3 bg-black/15" />
-
-                      <span className="text-[10px] uppercase tracking-[0.1em] text-[#242321]/55">
-                        {tech}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+    <article className="group flex flex-col justify-between rounded-xl border border-black/[0.08] bg-white p-5 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:border-[#c6a15b]/60 hover:shadow-md">
+      <div>
+        {/* Top Header Row */}
+        <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[10px] font-semibold tracking-wider text-[#9b7837]">
+              {String(index + 1).padStart(2, '0')}
+            </span>
+            <span className="h-1 w-1 rounded-full bg-[#c6a15b]" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#242321]/60">
+              {project.category || 'Product'}
+            </span>
           </div>
 
-          {/* Actions */}
-          <div className="mt-10">
-            <div className="flex flex-wrap gap-3">
-              {project.officialUrl && (
-                <a
-                  href={project.officialUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group inline-flex items-center gap-3 bg-[#242321] px-5 py-3 text-[9px] font-semibold uppercase tracking-[0.2em] text-white"
-                >
-                  Visit live
-                  <ArrowUpRight
-                    size={13}
-                    className="transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
-                  />
-                </a>
-              )}
-
-              {project.demoUrl && (
-                <a
-                  href={project.demoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-3 border border-black/15 px-5 py-3 text-[9px] font-semibold uppercase tracking-[0.2em] text-[#242321]"
-                >
-                  Demo
-                  <ExternalLink size={12} />
-                </a>
-              )}
-            </div>
-
-            {project.requiresLogin && (
-              <div className="mt-5 flex items-center gap-2 text-[8px] uppercase tracking-[0.2em] text-[#242321]/35">
-                <LockKeyhole size={12} />
-                Restricted client platform
-              </div>
-            )}
-          </div>
+          {project.requiresLogin ? (
+            <span className="inline-flex items-center gap-1 rounded bg-[#c6a15b]/10 px-2 py-0.5 text-[9px] font-semibold text-[#9b7837]">
+              <LockKeyhole size={10} /> Private
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded bg-black/[0.04] px-2 py-0.5 text-[9px] font-semibold text-[#242321]/50">
+              <Layers size={10} /> Public
+            </span>
+          )}
         </div>
 
-        {/* Images */}
-        <div className="lg:col-span-8">
-          <ProjectImages
-            project={project}
-            onOpen={onOpenImage}
-          />
+        {/* Title & Description */}
+        <div className="mt-3">
+          <h3 className="font-display text-xl font-medium tracking-tight text-[#242321]">
+            {project.name}
+          </h3>
+          <p className="mt-2 text-xs leading-relaxed text-[#242321]/70 line-clamp-3">
+            {project.description ||
+              'Targeted solution engineered to solve structural workflows with high fidelity.'}
+          </p>
         </div>
-      </div>
 
-      {/* Facts */}
-      <div className="mt-12 grid grid-cols-2 gap-y-7 border-y border-black/10 py-7 sm:grid-cols-4">
-        <Stat
-          icon={Clock3}
-          label="Timeline"
-          value={project.duration}
-        />
-
-        <Stat
-          icon={Users}
-          label="Users / scale"
-          value={project.userCount}
-        />
-
-        <Stat
-          icon={Layers}
-          label="Access"
-          value={
-            project.requiresLogin
-              ? 'Restricted'
-              : 'Public'
-          }
-        />
-
-        {project.healthcareStatus &&
-        project.healthcareStatus !==
-          'not-applicable' ? (
-          <Stat
-            icon={Heart}
-            label="Healthcare"
-            value={
-              healthcareAmount
-                ? healthcareAmount
-                : 'Included'
-            }
-          />
-        ) : (
-          <Stat
-            icon={Sparkles}
-            label="Status"
-            value="Published"
-          />
-        )}
-      </div>
-
-      {/* Client access */}
-      {project.requiresLogin &&
-        project.loginNotice && (
-          <div className="mt-8 border-l-2 border-[#c6a15b] bg-[#c6a15b]/5 px-5 py-4">
-            <div className="flex items-center gap-2">
-              <LockKeyhole
-                size={13}
-                className="text-[#9b7837]"
-              />
-
-              <span className="text-[8px] font-semibold uppercase tracking-[0.25em] text-[#9b7837]">
-                Client access
+        {/* Dynamic Badges Group */}
+        <div className="mt-4 space-y-2.5">
+          {/* Healthcare Budget / Allocation Badge */}
+          {isHealthcare && (
+            <div className="inline-flex w-full items-center justify-between rounded-md border border-[#c6a15b]/30 bg-[#c6a15b]/10 px-2.5 py-1 text-[10px] font-medium text-[#8f6d2e]">
+              <span className="flex items-center gap-1.5 font-semibold">
+                <Heart size={11} className="fill-[#8f6d2e]" /> Healthcare Grant
+              </span>
+              <span className="font-mono font-bold tracking-tight">
+                {healthcareAmount || 'Allocated'}
               </span>
             </div>
+          )}
 
-            <p className="mt-2 text-xs leading-6 text-[#242321]/55">
-              {project.loginNotice}
-            </p>
+          {/* Quick Metrics Badges */}
+          <div className="flex flex-wrap gap-1.5">
+            {project.duration && (
+              <span className="inline-flex items-center gap-1 rounded border border-black/[0.05] bg-[#f7f5f0] px-2 py-0.5 text-[10px] font-medium text-[#242321]/70">
+                <Clock3 size={10} className="text-[#9b7837]" /> {project.duration}
+              </span>
+            )}
+
+            {project.userCount && (
+              <span className="inline-flex items-center gap-1 rounded border border-black/[0.05] bg-[#f7f5f0] px-2 py-0.5 text-[10px] font-medium text-[#242321]/70">
+                <Users size={10} className="text-[#9b7837]" /> {project.userCount}
+              </span>
+            )}
           </div>
-        )}
 
-      {/* Video */}
-      {videoUrl && (
-        <div className="mt-14 border-t border-black/10 pt-10">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <p className="text-[8px] font-semibold uppercase tracking-[0.3em] text-[#9b7837]">
-                Walkthrough
-              </p>
-
-              <h4 className="mt-2 font-display text-2xl">
-                See it in action.
-              </h4>
+          {/* Tools / Tech Stack Cluster */}
+          {techStack.length > 0 && (
+            <div className="rounded-md border border-black/[0.04] bg-[#f7f5f0]/60 p-2">
+              <div className="mb-1.5 flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider text-[#242321]/40">
+                <Cpu size={10} /> Tools & Stack
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {techStack.map((tech) => (
+                  <span
+                    key={tech}
+                    className="rounded bg-white px-1.5 py-0.5 text-[9px] font-semibold text-[#242321]/80 shadow-2xs border border-black/[0.04]"
+                  >
+                    {tech}
+                  </span>
+                ))}
+              </div>
             </div>
-
-            <Play
-              size={17}
-              strokeWidth={1.3}
-              className="text-[#242321]/25"
-            />
-          </div>
-
-          <div className="overflow-hidden bg-black">
-            <div className="aspect-video">
-              <iframe
-                src={videoUrl}
-                title={`${project.name} walkthrough`}
-                className="h-full w-full"
-                loading="lazy"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-              />
-            </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* Separator */}
-      <div className="mt-24 flex items-center gap-5">
-        <span className="h-px flex-1 bg-black/10" />
+      {/* Action Footer Button Group */}
+      <div className="mt-5 flex items-center justify-between gap-1.5 border-t border-black/[0.06] pt-3">
+        {/* Media Triggers (Gallery & Tour) */}
+        <div className="flex items-center gap-1.5">
+          {images.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onOpenGallery(images)}
+              className="inline-flex items-center gap-1 rounded border border-[#c6a15b]/50 bg-[#c6a15b]/10 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#9b7837] transition-all hover:bg-[#c6a15b]/20"
+              title="View Screenshots"
+            >
+              <Images size={12} /> {images.length}
+            </button>
+          )}
 
-        <span className="font-serif text-xl italic text-[#242321]/20">
-          {String(index + 1).padStart(2, '0')}
-        </span>
+          {videoUrl && (
+            <button
+              type="button"
+              onClick={() => onOpenVideo(videoUrl, project.name)}
+              className="inline-flex items-center gap-1 rounded border border-black/10 bg-[#f7f5f0] px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#242321] transition-all hover:bg-[#242321] hover:text-white"
+              title="Watch Tour"
+            >
+              <Play size={11} className="fill-current" /> Tour
+            </button>
+          )}
+        </div>
 
-        <span className="h-px flex-1 bg-black/10" />
+        {/* Outbound Links */}
+        <div className="flex items-center gap-1.5">
+          {project.demoUrl && (
+            <a
+              href={project.demoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded border border-black/10 bg-white px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#242321] transition-all hover:bg-neutral-100"
+            >
+              Demo <ExternalLink size={10} />
+            </a>
+          )}
+
+          {project.officialUrl && (
+            <a
+              href={project.officialUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded bg-[#242321] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white transition-all hover:bg-black shadow-2xs"
+            >
+              Launch <ArrowUpRight size={11} />
+            </a>
+          )}
+        </div>
       </div>
     </article>
   )
 }
+
+/* -------------------------------------------------------------------------- */
+/*                               Main Component                               */
+/* -------------------------------------------------------------------------- */
 
 export default function Projects() {
   const [projects, setProjects] = useState([])
@@ -566,48 +323,24 @@ export default function Projects() {
   const [error, setError] = useState('')
   const [category, setCategory] = useState('All')
   const [lightbox, setLightbox] = useState(null)
+  const [activeVideo, setActiveVideo] = useState(null)
 
   useEffect(() => {
     let mounted = true
-
     async function loadProjects() {
       try {
         setLoading(true)
-        setError('')
-
         const data = await getPublishedProjects()
-
         if (!mounted) return
-
-        setProjects(
-          Array.isArray(data)
-            ? data.filter(
-                (project) =>
-                  project &&
-                  project.deleted !== true,
-              )
-            : [],
-        )
+        setProjects(Array.isArray(data) ? data.filter((p) => p && !p.deleted) : [])
       } catch (err) {
-        console.error(
-          'Failed to load projects:',
-          err,
-        )
-
-        if (mounted) {
-          setError(
-            'Unable to load projects right now.',
-          )
-        }
+        console.error('Failed to load projects:', err)
+        if (mounted) setError('Unable to load projects right now.')
       } finally {
-        if (mounted) {
-          setLoading(false)
-        }
+        if (mounted) setLoading(false)
       }
     }
-
     loadProjects()
-
     return () => {
       mounted = false
     }
@@ -615,45 +348,29 @@ export default function Projects() {
 
   const categories = useMemo(() => {
     const values = Array.from(
-      new Set(
-        projects
-          .map((project) => project.category)
-          .filter(Boolean),
-      ),
+      new Set(projects.map((project) => project.category).filter(Boolean)),
     )
-
     return ['All', ...values]
   }, [projects])
 
   const filteredProjects = useMemo(() => {
-    if (category === 'All') {
-      return projects
-    }
-
-    return projects.filter(
-      (project) => project.category === category,
-    )
+    if (category === 'All') return projects
+    return projects.filter((project) => project.category === category)
   }, [projects, category])
 
   useEffect(() => {
-    document.body.style.overflow =
-      lightbox ? 'hidden' : ''
-
+    document.body.style.overflow = lightbox || activeVideo ? 'hidden' : ''
     return () => {
       document.body.style.overflow = ''
     }
-  }, [lightbox])
+  }, [lightbox, activeVideo])
 
   if (loading) {
     return (
-      <section
-        id="work"
-        className="flex min-h-[80vh] items-center justify-center bg-[#f7f5f0]"
-      >
+      <section id="work" className="flex min-h-[40vh] items-center justify-center bg-[#f7f5f0]">
         <div className="text-center">
-          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-black/10 border-t-[#242321]" />
-
-          <p className="mt-5 text-[9px] uppercase tracking-[0.3em] text-black/35">
+          <div className="mx-auto h-7 w-7 animate-spin rounded-full border-2 border-black/10 border-t-[#242321]" />
+          <p className="mt-4 font-mono text-[9px] uppercase tracking-[0.25em] text-black/40">
             Curating works
           </p>
         </div>
@@ -663,162 +380,114 @@ export default function Projects() {
 
   if (error || projects.length === 0) {
     return (
-      <section
-        id="work"
-        className="bg-[#f7f5f0] py-32 text-center"
-      >
-        <p className="text-[9px] uppercase tracking-[0.3em] text-[#9b7837]">
+      <section id="work" className="bg-[#f7f5f0] py-20 text-center">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#9b7837]">
           Selected Work
         </p>
-
-        <p className="mt-4 text-sm text-black/40">
-          {error ||
-            'Work is coming together.'}
-        </p>
+        <p className="mt-3 text-xs text-black/50">{error || 'No published projects available.'}</p>
       </section>
     )
   }
 
-  const lightboxImages =
-    lightbox?.images || []
-
   return (
     <>
-      <section
-        id="work"
-        className="overflow-hidden bg-[#f7f5f0] text-[#242321]"
-      >
-        <div className="mx-auto max-w-[1450px] px-5 py-24 sm:px-8 sm:py-32 lg:px-12 lg:py-40">
-          {/* Header */}
-          <header className="mb-24 sm:mb-32 lg:mb-40">
-            <div className="flex flex-col justify-between gap-10 lg:flex-row lg:items-end">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Sparkles
-                    size={12}
-                    strokeWidth={1.3}
-                    className="text-[#9b7837]"
-                  />
-
-                  <span className="text-[9px] font-semibold uppercase tracking-[0.3em] text-black/35">
-                    Abhinava / Work
-                  </span>
-                </div>
-
-                <h2 className="mt-6 max-w-4xl font-display text-6xl font-normal leading-[0.88] tracking-[-0.05em] sm:text-8xl lg:text-[9rem]">
-                  Selected
-                  <span className="ml-3 font-serif italic text-black/55">
-                    work.
-                  </span>
-                </h2>
-
-                <p className="mt-8 max-w-xl text-sm leading-7 text-black/45 sm:text-base">
-                  Digital products, business systems and
-                  experiences built around the way organisations
-                  actually work.
-                </p>
+      <section id="work" className="bg-[#f7f5f0] text-[#242321] py-10 sm:py-14">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          
+          {/* Header & Filter Controls */}
+          <div className="mb-8 flex flex-col gap-4 border-b border-black/[0.08] pb-5 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="flex items-center gap-1.5">
+                <Sparkles size={12} className="text-[#9b7837]" />
+                <span className="text-[9px] font-semibold uppercase tracking-[0.25em] text-black/45">
+                  Portfolio Docket
+                </span>
               </div>
-
-              {/* Filters */}
-              <div className="flex max-w-md flex-wrap gap-x-5 gap-y-3">
-                {categories.map((item) => {
-                  const active = category === item
-
-                  return (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => setCategory(item)}
-                      className={`relative pb-2 text-[9px] font-semibold uppercase tracking-[0.22em] ${
-                        active
-                          ? 'text-[#242321]'
-                          : 'text-black/30 hover:text-black/60'
-                      }`}
-                    >
-                      {item}
-
-                      <span
-                        className={`absolute bottom-0 left-0 h-px bg-[#c6a15b] transition-all duration-300 ${
-                          active
-                            ? 'w-full'
-                            : 'w-0'
-                        }`}
-                      />
-                    </button>
-                  )
-                })}
-              </div>
+              <h2 className="mt-1 font-display text-3xl font-medium tracking-tight sm:text-4xl">
+                Selected Work<span className="text-[#c6a15b]">.</span>
+              </h2>
             </div>
-          </header>
 
-          {/* Projects */}
-          <div className="space-y-32 sm:space-y-44 lg:space-y-56">
-            {filteredProjects.map(
-              (project, index) => (
-                <CaseStudy
-                  key={project.id}
-                  project={project}
-                  index={index}
-                  onOpenImage={(imageIndex) => {
-                    const images =
-                      Array.isArray(project.images)
-                        ? project.images.filter(Boolean)
-                        : []
+            {/* Category Filter Pills */}
+            <div className="no-scrollbar -mx-4 flex overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0 gap-1.5 pb-1 sm:pb-0">
+              {categories.map((item) => {
+                const active = category === item
+                const count =
+                  item === 'All'
+                    ? projects.length
+                    : projects.filter((p) => p.category === item).length
 
-                    setLightbox({
-                      images,
-                      index: imageIndex,
-                    })
-                  }}
-                />
-              ),
-            )}
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setCategory(item)}
+                    className={`whitespace-nowrap rounded-full px-3 py-1 text-[10px] font-medium tracking-wide transition-all ${
+                      active
+                        ? 'bg-[#242321] text-white shadow-2xs'
+                        : 'bg-white/80 text-[#242321]/70 hover:bg-white border border-black/[0.06]'
+                    }`}
+                  >
+                    {item}{' '}
+                    <span className={`ml-1 text-[8px] ${active ? 'text-white/60' : 'text-black/35'}`}>
+                      ({count})
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
-          {/* End */}
-          <div className="mt-32 border-t border-black/10 pt-10 text-center sm:mt-44">
-            <p className="text-[9px] uppercase tracking-[0.35em] text-black/30">
-              End of selected work
-            </p>
-
-            <p className="mt-4 font-serif text-xl italic text-black/45">
-              More is being built.
-            </p>
+          {/* Compact 3-Column Grid */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredProjects.map((project, index) => (
+              <MiniProjectCard
+                key={project.id || index}
+                project={project}
+                index={index}
+                onOpenGallery={(images) => setLightbox({ images, index: 0 })}
+                onOpenVideo={(url, name) => setActiveVideo({ url, title: name })}
+              />
+            ))}
           </div>
+
+          {/* Footer Count */}
+          <div className="mt-10 text-center">
+            <span className="font-mono text-[9px] uppercase tracking-widest text-black/35">
+              Showing {filteredProjects.length} of {projects.length} entries
+            </span>
+          </div>
+
         </div>
       </section>
 
+      {/* Fullscreen Lightbox Modal */}
       {lightbox && (
         <Lightbox
-          images={lightboxImages}
+          images={lightbox.images}
           index={lightbox.index}
           onClose={() => setLightbox(null)}
-          onPrevious={() => {
-            setLightbox((current) => {
-              if (!current) return null
+          onPrevious={() =>
+            setLightbox((curr) => ({
+              ...curr,
+              index: (curr.index - 1 + curr.images.length) % curr.images.length,
+            }))
+          }
+          onNext={() =>
+            setLightbox((curr) => ({
+              ...curr,
+              index: (curr.index + 1) % curr.images.length,
+            }))
+          }
+        />
+      )}
 
-              return {
-                ...current,
-                index:
-                  (current.index -
-                    1 +
-                    current.images.length) %
-                  current.images.length,
-              }
-            })
-          }}
-          onNext={() => {
-            setLightbox((current) => {
-              if (!current) return null
-
-              return {
-                ...current,
-                index:
-                  (current.index + 1) %
-                  current.images.length,
-              }
-            })
-          }}
+      {/* Video Walkthrough Modal */}
+      {activeVideo && (
+        <VideoModal
+          videoUrl={activeVideo.url}
+          title={activeVideo.title}
+          onClose={() => setActiveVideo(null)}
         />
       )}
     </>

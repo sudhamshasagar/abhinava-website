@@ -29,13 +29,13 @@ const services = [
     description:
       'Centralize customers, sales, purchases, inventory, employees, operations and reports in secure business systems built for your industry — including jewelry, retail, manufacturing and service businesses.',
   },
-  {
-    number: '04',
-    icon: BarChart3,
-    title: 'Data & Analytics',
-    description:
-      'Turn your business data into clear dashboards, reports and actionable insights so you can understand performance, identify opportunities and make better decisions.',
-  },
+  // {
+  //   number: '04',
+  //   icon: BarChart3,
+  //   title: 'Data & Analytics',
+  //   description:
+  //     'Turn your business data into clear dashboards, reports and actionable insights so you can understand performance, identify opportunities and make better decisions.',
+  // },
 ]
 
 export default function Services() {

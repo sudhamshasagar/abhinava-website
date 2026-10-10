@@ -6,14 +6,14 @@ import {
   setProjectPublished,
   updateProject as updateProjectInFirebase,
 } from '../firebase/projects'
-import { auth ,storage} from '../firebase/config'
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { auth, storage } from '../firebase/config'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 
 import {
   Plus,
   Search,
   SlidersHorizontal,
-  MoreHorizontal,
+  MoreVertical,
   Pencil,
   Eye,
   EyeOff,
@@ -28,15 +28,15 @@ import {
   Link as LinkIcon,
   Upload,
   Loader2,
+  Star,
+  CheckCircle2,
+  FolderKanban,
+  FileCheck2,
+  ShieldAlert,
+  ArrowUpRight,
 } from 'lucide-react'
 
-
-
-const PROJECT_CATEGORIES = [
-  'Website',
-  'Multi Tenant CRM',
-  'Inhouse CRM',
-]
+const PROJECT_CATEGORIES = ['Website', 'Multi Tenant CRM', 'Inhouse CRM']
 
 const EMPTY_PROJECT = {
   name: '',
@@ -47,7 +47,7 @@ const EMPTY_PROJECT = {
   requiresLogin: false,
   loginNotice:
     'Login access is available only to the client and its authorized users. Please explore the demo to experience the platform without login.',
-  images: [],
+  images: [], // array of { id, url, file, preview, isNew }
   youtubeUrl: '',
   userCount: '',
   duration: '',
@@ -64,26 +64,15 @@ const EMPTY_PROJECT = {
 }
 
 function formatCurrency(value) {
-  if (value === '' || value === null || value === undefined) {
-    return '—'
-  }
-
+  if (value === '' || value === null || value === undefined) return '—'
   const number = Number(value)
-
-  if (Number.isNaN(number)) {
-    return '—'
-  }
-
+  if (Number.isNaN(number)) return '—'
   return `₹${number.toLocaleString('en-IN')}`
 }
 
 function getHealthcareAllocation(projectAmount) {
   const amount = Number(projectAmount)
-
-  if (!amount || amount <= 0) {
-    return 0
-  }
-
+  if (!amount || amount <= 0) return 0
   return Math.round(amount * 0.7)
 }
 
@@ -91,13 +80,10 @@ function getHealthcareStatusLabel(status) {
   switch (status) {
     case 'yes':
       return 'Healthcare'
-
     case 'earlier-work':
       return 'Earlier Work'
-
     case 'not-applicable':
-      return 'Not Applicable'
-
+      return 'Standard'
     default:
       return 'Pending'
   }
@@ -126,27 +112,21 @@ export default function ProjectManagement() {
   const [openMenu, setOpenMenu] = useState(null)
 
   const [projectForm, setProjectForm] = useState(EMPTY_PROJECT)
-
   const imageInputRef = useRef(null)
 
   /* =========================================================
-     LOAD PROJECTS
+      DATA FETCHING
   ========================================================= */
 
   const loadProjects = async () => {
     try {
       setLoading(true)
       setError('')
-
       const data = await getProjects()
-
-      setProjects(data)
+      setProjects(data || [])
     } catch (err) {
       console.error('Failed to load projects:', err)
-
-      setError(
-        'Unable to load projects. Please check Firebase connection and Firestore permissions.',
-      )
+      setError('Unable to fetch projects. Please verify Firestore security rules.')
     } finally {
       setLoading(false)
     }
@@ -157,33 +137,38 @@ export default function ProjectManagement() {
   }, [])
 
   /* =========================================================
-     FILTER
+      STATS CALCULATIONS
+  ========================================================= */
+
+  const stats = useMemo(() => {
+    const total = projects.filter((p) => !p.deleted).length
+    const published = projects.filter((p) => !p.deleted && p.published).length
+    const healthcare = projects.filter(
+      (p) => !p.deleted && p.healthcareStatus === 'yes',
+    ).length
+    const hidden = total - published
+    return { total, published, healthcare, hidden }
+  }, [projects])
+
+  /* =========================================================
+      FILTERING & SEARCH
   ========================================================= */
 
   const filteredProjects = useMemo(() => {
     const query = search.trim().toLowerCase()
 
     return projects.filter((project) => {
-      if (project.deleted) {
-        return false
-      }
+      if (project.deleted) return false
 
-      const projectName = String(project.name || '').toLowerCase()
-      const projectCategory = String(
-        project.category || '',
-      ).toLowerCase()
-
-      const techStack = Array.isArray(project.techStack)
-        ? project.techStack
-        : []
+      const name = String(project.name || '').toLowerCase()
+      const category = String(project.category || '').toLowerCase()
+      const stack = Array.isArray(project.techStack) ? project.techStack : []
 
       const matchesSearch =
         !query ||
-        projectName.includes(query) ||
-        projectCategory.includes(query) ||
-        techStack.some((stack) =>
-          String(stack).toLowerCase().includes(query),
-        )
+        name.includes(query) ||
+        category.includes(query) ||
+        stack.some((s) => String(s).toLowerCase().includes(query))
 
       const matchesFilter =
         filter === 'All' ||
@@ -196,402 +181,137 @@ export default function ProjectManagement() {
   }, [projects, search, filter])
 
   /* =========================================================
-     FORM HELPERS
+      FORM FIELD UPDATES
   ========================================================= */
 
   const updateForm = (field, value) => {
-    setProjectForm((current) => ({
-      ...current,
+    setProjectForm((curr) => ({
+      ...curr,
       [field]: value,
     }))
   }
 
   const updateProjectAmount = (value) => {
-    const allocation = getHealthcareAllocation(value)
-
-    setProjectForm((current) => ({
-      ...current,
+    const alloc = getHealthcareAllocation(value)
+    setProjectForm((curr) => ({
+      ...curr,
       projectAmount: value,
-      healthcareAllocation:
-        current.healthcareStatus === 'yes'
-          ? allocation || ''
-          : '',
+      healthcareAllocation: curr.healthcareStatus === 'yes' ? alloc || '' : '',
     }))
   }
 
-  const addTechStack = (event) => {
-    if (event.key !== 'Enter') {
+  const addTechStack = (e) => {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    const val = e.currentTarget.value.trim()
+    if (!val || projectForm.techStack.includes(val)) {
+      e.currentTarget.value = ''
       return
     }
-
-    event.preventDefault()
-
-    const value = event.currentTarget.value.trim()
-
-    if (!value) {
-      return
-    }
-
-    if (projectForm.techStack.includes(value)) {
-      event.currentTarget.value = ''
-      return
-    }
-
-    setProjectForm((current) => ({
-      ...current,
-      techStack: [...current.techStack, value],
+    setProjectForm((curr) => ({
+      ...curr,
+      techStack: [...curr.techStack, val],
     }))
-
-    event.currentTarget.value = ''
+    e.currentTarget.value = ''
   }
 
-  const removeTechStack = (stack) => {
-    setProjectForm((current) => ({
-      ...current,
-      techStack: current.techStack.filter(
-        (item) => item !== stack,
-      ),
+  const removeTechStack = (item) => {
+    setProjectForm((curr) => ({
+      ...curr,
+      techStack: curr.techStack.filter((t) => t !== item),
     }))
   }
 
   /* =========================================================
-     IMAGE SELECTION
+      IMAGE STATE HANDLING
   ========================================================= */
 
-  const handleImageSelection = (event) => {
-    const files = Array.from(event.target.files || [])
+  const handleImageSelection = (e) => {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
 
-    if (!files.length) {
+    const validFiles = files.filter((f) => f.type.startsWith('image/'))
+    if (!validFiles.length) {
+      setError('Please choose valid image files (JPG, PNG, WebP).')
       return
     }
 
-    const imageFiles = files.filter((file) =>
-      file.type.startsWith('image/'),
-    )
-
-    if (!imageFiles.length) {
-      setError('Please select valid image files.')
-      return
-    }
-
-    const previews = imageFiles.map((file) => ({
-      id: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`,
+    const items = validFiles.map((file) => ({
+      id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       file,
+      url: null,
       preview: URL.createObjectURL(file),
-      uploaded: false,
+      isNew: true,
     }))
 
-    setProjectForm((current) => ({
-      ...current,
-      images: [
-        ...current.images,
-        ...previews,
-      ],
+    setProjectForm((curr) => ({
+      ...curr,
+      images: [...curr.images, ...items],
     }))
-
-    event.target.value = ''
+    e.target.value = ''
   }
 
-  const removeImage = (imageId) => {
-    setProjectForm((current) => {
-      const image = current.images.find(
-        (item) => item.id === imageId,
-      )
-
-      if (
-        image?.preview &&
-        image.preview.startsWith('blob:')
-      ) {
-        URL.revokeObjectURL(image.preview)
+  const removeImage = (id) => {
+    setProjectForm((curr) => {
+      const target = curr.images.find((img) => img.id === id)
+      if (target?.isNew && target.preview) {
+        URL.revokeObjectURL(target.preview)
       }
-
       return {
-        ...current,
-        images: current.images.filter(
-          (item) => item.id !== imageId,
-        ),
+        ...curr,
+        images: curr.images.filter((img) => img.id !== id),
       }
     })
   }
 
+  const setCoverImage = (index) => {
+    if (index === 0) return
+    setProjectForm((curr) => {
+      const copy = [...curr.images]
+      const [promoted] = copy.splice(index, 1)
+      copy.unshift(promoted)
+      return { ...curr, images: copy }
+    })
+  }
+
   /* =========================================================
-     UPLOAD IMAGES
+      STORAGE UPLOADS
   ========================================================= */
 
-  const uploadProjectImages = async (
-    projectId,
-    images,
-  ) => {
-    const uploadedImages = []
+  const processImages = async (projectId, formImages) => {
+    const finalUrls = []
+    const hasNewUploads = formImages.some((i) => i.isNew && i.file)
 
-    const imageFiles = images.filter(
-      (image) => image?.file instanceof File,
-    )
-
-    if (!imageFiles.length) {
-      return images
-        .filter((image) => typeof image === 'string')
-        .concat(
-          images
-            .filter(
-              (image) =>
-                image &&
-                !image.file &&
-                typeof image.url === 'string',
-            )
-            .map((image) => image.url),
-        )
-    }
-
-    setUploadingImages(true)
+    if (hasNewUploads) setUploadingImages(true)
 
     try {
-      for (const image of imageFiles) {
-        const safeFileName = image.file.name
-          .replace(/[^a-zA-Z0-9._-]/g, '-')
-
-        const filePath =
-          `projects/${projectId}/${Date.now()}-${safeFileName}`
-
-        const storageRef = ref(
-          storage,
-          filePath,
-        )
-
-        await uploadBytes(
-          storageRef,
-          image.file,
-          {
-            contentType: image.file.type,
-          },
-        )
-
-        const downloadUrl =
-          await getDownloadURL(storageRef)
-
-        uploadedImages.push(downloadUrl)
+      for (const item of formImages) {
+        if (!item.isNew && item.url) {
+          finalUrls.push(item.url)
+        } else if (item.isNew && item.file) {
+          const safeName = item.file.name.replace(/[^a-zA-Z0-9._-]/g, '-')
+          const storageRef = ref(
+            storage,
+            `projects/${projectId}/${Date.now()}-${safeName}`,
+          )
+          await uploadBytes(storageRef, item.file, { contentType: item.file.type })
+          const dlUrl = await getDownloadURL(storageRef)
+          finalUrls.push(dlUrl)
+        }
       }
-
-      const existingImages = images
-        .filter((image) => typeof image === 'string')
-
-      const existingObjectUrls = images
-        .filter(
-          (image) =>
-            image &&
-            !image.file &&
-            typeof image.url === 'string',
-        )
-        .map((image) => image.url)
-
-      return [
-        ...existingImages,
-        ...existingObjectUrls,
-        ...uploadedImages,
-      ]
+      return finalUrls
     } finally {
       setUploadingImages(false)
     }
   }
 
   /* =========================================================
-     CREATE PROJECT
+      DATABASE MUTATIONS
   ========================================================= */
 
- const createProject = async () => {
-  if (!projectForm.name.trim()) {
-    setError('Project name is required.')
-    return
-  }
-
-  try {
-    setSaving(true)
-    setError('')
-
-    /*
-     * =======================================================
-     * AUTH CHECK
-     * =======================================================
-     */
-
-    if (!auth.currentUser) {
-      throw new Error(
-        'You are not authenticated. Please sign in again.',
-      )
-    }
-
-    console.log(
-      'Project admin check:',
-      {
-        uid: auth.currentUser.uid,
-        email: auth.currentUser.email,
-        projectId: auth.app.options.projectId,
-      },
-    )
-
-    const slug =
-      projectForm.slug.trim() ||
-      createSlug(projectForm.name)
-
-    /*
-     * =======================================================
-     * CREATE FIRESTORE DOCUMENT
-     * =======================================================
-     */
-
-    const projectData = {
-      ...projectForm,
-
-      name: projectForm.name.trim(),
-
-      slug,
-
-      techStack: Array.isArray(projectForm.techStack)
-        ? projectForm.techStack
-        : [],
-
-      images: [],
-
-      deleted: false,
-    }
-
-    let createdProject
-
-    try {
-      createdProject =
-        await createProjectInFirebase(projectData)
-    } catch (err) {
-      console.error(
-        'Firestore project creation failed:',
-        err,
-      )
-
-      throw new Error(
-        `Unable to create project in Firestore: ${
-          err?.message || 'Permission denied.'
-        }`,
-      )
-    }
-
-    const projectId = createdProject.id
-
-    /*
-     * =======================================================
-     * UPLOAD IMAGES
-     * =======================================================
-     */
-
-    let uploadedImages = []
-
-    try {
-      uploadedImages =
-        await uploadProjectImages(
-          projectId,
-          projectForm.images,
-        )
-    } catch (err) {
-      console.error(
-        'Project image upload failed:',
-        err,
-      )
-
-      throw new Error(
-        `Project was created, but image upload failed: ${
-          err?.message || 'Storage permission denied.'
-        }`,
-      )
-    }
-
-    /*
-     * =======================================================
-     * SAVE IMAGE URLS
-     * =======================================================
-     */
-
-    if (uploadedImages.length > 0) {
-      try {
-        await updateProjectInFirebase(
-          projectId,
-          {
-            images: uploadedImages,
-          },
-        )
-      } catch (err) {
-        console.error(
-          'Saving project images failed:',
-          err,
-        )
-
-        throw new Error(
-          `Project was created, but saving image URLs failed: ${
-            err?.message || 'Firestore permission denied.'
-          }`,
-        )
-      }
-    }
-
-    /*
-     * =======================================================
-     * REFRESH
-     * =======================================================
-     */
-
-    await loadProjects()
-
-    setShowAddModal(false)
-    setEditingProject(null)
-    setProjectForm(EMPTY_PROJECT)
-    setOpenMenu(null)
-  } catch (err) {
-    console.error(
-      'Project creation failed:',
-      err,
-    )
-
-    setError(
-      err?.message ||
-        'Unable to create project. Please try again.',
-    )
-  } finally {
-    setSaving(false)
-    setUploadingImages(false)
-  }
-}
-
-  /* =========================================================
-     START EDIT
-  ========================================================= */
-
-  const startEdit = (project) => {
-    setEditingProject(project)
-
-    setProjectForm({
-      ...EMPTY_PROJECT,
-      ...project,
-      techStack: Array.isArray(project.techStack)
-        ? project.techStack
-        : [],
-      images: Array.isArray(project.images)
-        ? project.images
-        : [],
-      userCount: project.userCount ?? '',
-      projectAmount: project.projectAmount ?? '',
-      healthcareAllocation:
-        project.healthcareAllocation ?? '',
-      amountUtilised:
-        project.amountUtilised ?? '',
-    })
-
-    setOpenMenu(null)
-    setError('')
-  }
-
-  /* =========================================================
-     SAVE EDIT
-  ========================================================= */
-
-  const saveEdit = async () => {
-    if (!projectForm.name.trim() || !editingProject) {
+  const handleCreate = async () => {
+    if (!projectForm.name.trim()) {
+      setError('Project name is mandatory.')
       return
     }
 
@@ -599,193 +319,156 @@ export default function ProjectManagement() {
       setSaving(true)
       setError('')
 
-      const slug =
-        projectForm.slug.trim() ||
-        createSlug(projectForm.name)
+      if (!auth.currentUser) {
+        throw new Error('Authentication expired. Please log in again.')
+      }
 
-      /*
-       * Upload any newly selected images.
-       */
-
-      const uploadedImages =
-        await uploadProjectImages(
-          editingProject.id,
-          projectForm.images,
-        )
-
-      const projectData = {
+      const slug = projectForm.slug.trim() || createSlug(projectForm.name)
+      const baseData = {
         ...projectForm,
         name: projectForm.name.trim(),
         slug,
-        techStack: Array.isArray(projectForm.techStack)
-          ? projectForm.techStack
-          : [],
-        images: uploadedImages,
+        techStack: Array.isArray(projectForm.techStack) ? projectForm.techStack : [],
+        images: [],
+        deleted: false,
       }
 
-      await updateProjectInFirebase(
-        editingProject.id,
-        projectData,
-      )
+      const created = await createProjectInFirebase(baseData)
+      const urls = await processImages(created.id, projectForm.images)
+
+      if (urls.length > 0) {
+        await updateProjectInFirebase(created.id, { images: urls })
+      }
 
       await loadProjects()
-
-      setEditingProject(null)
-      setProjectForm(EMPTY_PROJECT)
-      setOpenMenu(null)
+      closeModal()
     } catch (err) {
-      console.error(
-        'Failed to update project:',
-        err,
-      )
-
-      setError(
-        err?.message ||
-          'Unable to update project. Please try again.',
-      )
+      console.error(err)
+      setError(err?.message || 'Error occurred while saving project.')
     } finally {
       setSaving(false)
-      setUploadingImages(false)
     }
   }
 
-  /* =========================================================
-     PUBLISH / HIDE
-  ========================================================= */
+  const startEdit = (project) => {
+    setEditingProject(project)
+    const normalized = Array.isArray(project.images)
+      ? project.images.filter(Boolean).map((url, idx) => ({
+          id: `remote-${idx}-${url.slice(-8)}`,
+          url,
+          file: null,
+          preview: url,
+          isNew: false,
+        }))
+      : []
+
+    setProjectForm({
+      ...EMPTY_PROJECT,
+      ...project,
+      images: normalized,
+      techStack: Array.isArray(project.techStack) ? project.techStack : [],
+      userCount: project.userCount ?? '',
+      projectAmount: project.projectAmount ?? '',
+      healthcareAllocation: project.healthcareAllocation ?? '',
+      amountUtilised: project.amountUtilised ?? '',
+    })
+    setOpenMenu(null)
+    setError('')
+  }
+
+  const handleUpdate = async () => {
+    if (!projectForm.name.trim() || !editingProject) return
+
+    try {
+      setSaving(true)
+      setError('')
+
+      const slug = projectForm.slug.trim() || createSlug(projectForm.name)
+      const urls = await processImages(editingProject.id, projectForm.images)
+
+      const payload = {
+        ...projectForm,
+        name: projectForm.name.trim(),
+        slug,
+        techStack: Array.isArray(projectForm.techStack) ? projectForm.techStack : [],
+        images: urls,
+      }
+
+      await updateProjectInFirebase(editingProject.id, payload)
+      await loadProjects()
+      closeModal()
+    } catch (err) {
+      console.error(err)
+      setError(err?.message || 'Update failed.')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const togglePublished = async (project) => {
     try {
       setError('')
-
-      await setProjectPublished(
-        project.id,
-        !project.published,
-      )
-
+      await setProjectPublished(project.id, !project.published)
       await loadProjects()
-
       setOpenMenu(null)
     } catch (err) {
-      console.error(
-        'Failed to update project publishing status:',
-        err,
-      )
-
-      setError(
-        err?.message ||
-          'Unable to update publishing status.',
-      )
+      setError(err?.message || 'Unable to toggle publication status.')
     }
   }
-
-  /* =========================================================
-     DELETE
-  ========================================================= */
 
   const deleteProject = async (id) => {
-    const confirmed = window.confirm(
-      'Delete this project? It will be removed from the management list.',
-    )
-
-    if (!confirmed) {
-      return
-    }
-
+    if (!window.confirm('Confirm deleting this project from the database?')) return
     try {
       setError('')
-
       await deleteProjectFromFirebase(id)
-
       await loadProjects()
-
       setOpenMenu(null)
     } catch (err) {
-      console.error(
-        'Failed to delete project:',
-        err,
-      )
-
-      setError(
-        err?.message ||
-          'Unable to delete project.',
-      )
+      setError(err?.message || 'Deletion failed.')
     }
   }
 
-  /* =========================================================
-     CLOSE MODAL
-  ========================================================= */
-
   const closeModal = () => {
-    projectForm.images.forEach((image) => {
-      if (
-        image?.preview &&
-        image.preview.startsWith('blob:')
-      ) {
-        URL.revokeObjectURL(image.preview)
-      }
+    projectForm.images.forEach((img) => {
+      if (img.isNew && img.preview) URL.revokeObjectURL(img.preview)
     })
-
     setShowAddModal(false)
     setEditingProject(null)
     setProjectForm(EMPTY_PROJECT)
     setError('')
   }
 
-  const isModalOpen =
-    showAddModal || Boolean(editingProject)
-
-  /* =========================================================
-     LOADING
-  ========================================================= */
+  const isModalOpen = showAddModal || Boolean(editingProject)
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f7f5f0] px-6 py-8 text-[#242321] lg:px-10">
-        <div className="mx-auto max-w-7xl">
-          <p className="text-[11px] uppercase tracking-[0.3em] text-[#9b7a42]">
-            Abhinava Admin
+      <div className="flex min-h-screen items-center justify-center bg-[#f7f5f0] text-[#242321]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-7 w-7 animate-spin text-[#9b7a42]" />
+          <p className="font-mono text-xs uppercase tracking-widest text-black/50">
+            Syncing Records...
           </p>
-
-          <h1 className="mt-3 font-display text-4xl sm:text-5xl">
-            Project Management
-          </h1>
-
-          <p className="mt-3 max-w-xl text-sm leading-6 text-black/50">
-            Loading projects from Firestore...
-          </p>
-
-          <div className="mt-10 h-32 animate-pulse rounded-2xl bg-black/[0.04]" />
         </div>
       </div>
     )
   }
 
-  /* =========================================================
-     MAIN
-  ========================================================= */
-
   return (
-    <div className="min-h-screen bg-[#f7f5f0] px-6 py-8 text-[#242321] lg:px-10">
-
+    <div className="min-h-screen bg-[#f7f5f0] px-3 py-6 text-[#242321] sm:px-6 lg:px-10">
       <div className="mx-auto max-w-7xl">
-
-        {/* HEADER */}
-
-        <div className="flex flex-col gap-5 border-b border-black/10 pb-8 md:flex-row md:items-end md:justify-between">
-
+        
+        {/* TOP HEADER */}
+        <header className="flex flex-col gap-4 border-b border-black/[0.08] pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.3em] text-[#9b7a42]">
-              Abhinava Admin
-            </p>
-
-            <h1 className="mt-3 font-display text-4xl sm:text-5xl">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-[#c6a15b]" />
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.25em] text-[#9b7837]">
+                Executive Workspace
+              </p>
+            </div>
+            <h1 className="mt-1 font-display text-2xl font-medium tracking-tight text-[#242321] sm:text-4xl">
               Project Management
             </h1>
-
-            <p className="mt-3 max-w-xl text-sm leading-6 text-black/50">
-              Manage the projects displayed on the Abhinava public website.
-            </p>
           </div>
 
           <button
@@ -796,1540 +479,698 @@ export default function ProjectManagement() {
               setError('')
               setShowAddModal(true)
             }}
-            className="flex w-fit items-center gap-2 rounded-full bg-[#242321] px-5 py-3 text-sm text-white transition hover:bg-black"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#242321] px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-white shadow-xs transition hover:bg-black"
           >
-            <Plus size={17} strokeWidth={1.6} />
+            <Plus size={15} strokeWidth={2.5} />
             Add Project
           </button>
+        </header>
 
+        {/* METRICS SUMMARY CARDS */}
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-xl border border-black/[0.07] bg-white p-3.5 shadow-2xs">
+            <div className="flex items-center gap-2 text-black/45">
+              <FolderKanban size={13} />
+              <span className="font-mono text-[9px] uppercase tracking-wider">Total</span>
+            </div>
+            <p className="mt-1 font-display text-xl font-medium sm:text-2xl">{stats.total}</p>
+          </div>
+
+          <div className="rounded-xl border border-black/[0.07] bg-white p-3.5 shadow-2xs">
+            <div className="flex items-center gap-2 text-emerald-600">
+              <FileCheck2 size={13} />
+              <span className="font-mono text-[9px] uppercase tracking-wider">Published</span>
+            </div>
+            <p className="mt-1 font-display text-xl font-medium sm:text-2xl">{stats.published}</p>
+          </div>
+
+          <div className="rounded-xl border border-black/[0.07] bg-white p-3.5 shadow-2xs">
+            <div className="flex items-center gap-2 text-[#9b7837]">
+              <HeartHandshake size={13} />
+              <span className="font-mono text-[9px] uppercase tracking-wider">Healthcare</span>
+            </div>
+            <p className="mt-1 font-display text-xl font-medium sm:text-2xl">{stats.healthcare}</p>
+          </div>
+
+          <div className="rounded-xl border border-black/[0.07] bg-white p-3.5 shadow-2xs">
+            <div className="flex items-center gap-2 text-black/40">
+              <EyeOff size={13} />
+              <span className="font-mono text-[9px] uppercase tracking-wider">Draft / Hidden</span>
+            </div>
+            <p className="mt-1 font-display text-xl font-medium sm:text-2xl">{stats.hidden}</p>
+          </div>
         </div>
 
-        {/* ERROR */}
-
+        {/* ERROR PROMPT */}
         {error && (
-          <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
+          <div className="mt-4 flex items-center justify-between rounded-xl border border-red-200 bg-red-50/90 px-4 py-3 text-xs text-red-700">
+            <span className="flex items-center gap-2">
+              <ShieldAlert size={14} /> {error}
+            </span>
+            <button type="button" onClick={() => setError('')}>
+              <X size={14} />
+            </button>
           </div>
         )}
 
-        {/* CONTROLS */}
-
-        <div className="mt-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-
-          <div className="flex flex-col gap-3 sm:flex-row">
-
-            <div className="relative">
-
+        {/* CONTROLS (SEARCH & CATEGORY BAR) */}
+        <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-1 flex-col gap-2.5 sm:flex-row sm:items-center">
+            <div className="relative w-full sm:max-w-xs">
               <Search
-                size={17}
-                strokeWidth={1.5}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
+                size={14}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-black/40"
               />
-
               <input
                 type="search"
                 value={search}
-                onChange={(event) =>
-                  setSearch(event.target.value)
-                }
-                placeholder="Search projects..."
-                className="h-11 w-full rounded-xl border border-black/10 bg-white pl-11 pr-4 text-sm outline-none transition focus:border-[#9b7a42] sm:w-72"
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by title, tech stack..."
+                className="h-9 w-full rounded-xl border border-black/10 bg-white pl-9 pr-3 text-xs outline-none focus:border-[#9b7a42]"
               />
-
             </div>
 
-            <div className="relative">
-
+            <div className="relative w-full sm:w-auto">
               <SlidersHorizontal
-                size={16}
-                strokeWidth={1.5}
-                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
+                size={13}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-black/40"
               />
-
               <select
                 value={filter}
-                onChange={(event) =>
-                  setFilter(event.target.value)
-                }
-                className="h-11 appearance-none rounded-xl border border-black/10 bg-white pl-10 pr-10 text-sm outline-none transition focus:border-[#9b7a42]"
+                onChange={(e) => setFilter(e.target.value)}
+                className="h-9 w-full appearance-none rounded-xl border border-black/10 bg-white pl-8 pr-7 text-xs font-medium outline-none focus:border-[#9b7a42] sm:w-auto"
               >
-                <option value="All">
-                  All Projects
-                </option>
-
-                <option value="Published">
-                  Published
-                </option>
-
-                <option value="Hidden">
-                  Hidden
-                </option>
-
-                {PROJECT_CATEGORIES.map(
-                  (category) => (
-                    <option
-                      key={category}
-                      value={category}
-                    >
-                      {category}
-                    </option>
-                  ),
-                )}
-
+                <option value="All">All Categories</option>
+                <option value="Published">Published Only</option>
+                <option value="Hidden">Hidden Only</option>
+                {PROJECT_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
               </select>
-
             </div>
-
           </div>
 
-          <div className="flex items-center gap-3 text-sm text-black/45">
-
-            <span>Total Projects</span>
-
-            <span className="flex h-9 min-w-9 items-center justify-center rounded-full bg-white px-3 font-medium text-black">
-              {filteredProjects.length}
-            </span>
-
+          <div className="font-mono text-[10px] text-black/45">
+            Showing <strong className="text-black">{filteredProjects.length}</strong> items
           </div>
-
         </div>
 
-        {/* TABLE */}
+        {/* =========================================================
+            DATA PRESENTATION (DUAL-VIEW ARCHITECTURE)
+        ========================================================= */}
 
-        <div className="mt-6 overflow-hidden rounded-2xl border border-black/10 bg-white">
-
-          <div className="hidden overflow-x-auto lg:block">
-
-            <table className="w-full border-collapse text-left">
-
-              <thead>
-
-                <tr className="border-b border-black/10 text-[11px] uppercase tracking-[0.18em] text-black/35">
-
-                  <th className="px-6 py-4 font-medium">
-                    Project
-                  </th>
-
-                  <th className="px-6 py-4 font-medium">
-                    Category
-                  </th>
-
-                  <th className="px-6 py-4 font-medium">
-                    Users
-                  </th>
-
-                  <th className="px-6 py-4 font-medium">
-                    Healthcare
-                  </th>
-
-                  <th className="px-6 py-4 font-medium">
-                    Status
-                  </th>
-
-                  <th className="px-6 py-4 text-right font-medium">
-                    Actions
-                  </th>
-
-                </tr>
-
-              </thead>
-
-              <tbody>
-
-                {filteredProjects.map(
-                  (project) => (
-
-                    <tr
-                      key={project.id}
-                      className="border-b border-black/[0.06] last:border-b-0"
-                    >
-
-                      <td className="px-6 py-5">
-
-                        <div className="flex items-center gap-4">
-
-                          <div className="flex h-12 w-16 items-center justify-center overflow-hidden rounded-lg bg-[#f0ede6]">
-
-                            {project.images?.[0] ? (
-                              <img
-                                src={project.images[0]}
-                                alt=""
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <span className="font-display text-lg text-black/15">
-                                {project.name?.charAt(0) || '?'}
-                              </span>
-                            )}
-
-                          </div>
-
-                          <div>
-
-                            <p className="font-medium">
-                              {project.name}
-                            </p>
-
-                            <p className="mt-1 text-xs text-black/35">
-                              /work/{project.slug}
-                            </p>
-
-                          </div>
-
-                        </div>
-
-                      </td>
-
-                      <td className="px-6 py-5 text-sm text-black/55">
-                        {project.category || '—'}
-                      </td>
-
-                      <td className="px-6 py-5 text-sm text-black/55">
-                        {project.userCount || '—'}
-                      </td>
-
-                      <td className="px-6 py-5">
-
-                        <span
-                          className={`inline-flex rounded-full px-3 py-1 text-xs ${
-                            project.healthcareStatus === 'yes'
-                              ? 'bg-[#ece7da] text-[#765a2e]'
-                              : 'bg-black/[0.04] text-black/45'
-                          }`}
-                        >
-                          {getHealthcareStatusLabel(
-                            project.healthcareStatus,
-                          )}
-                        </span>
-
-                      </td>
-
-                      <td className="px-6 py-5">
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            togglePublished(project)
-                          }
-                          className={`rounded-full px-3 py-1 text-xs ${
-                            project.published
-                              ? 'bg-black text-white'
-                              : 'bg-black/[0.05] text-black/45'
-                          }`}
-                        >
-                          {project.published
-                            ? 'Published'
-                            : 'Hidden'}
-                        </button>
-
-                      </td>
-
-                      <td className="relative px-6 py-5 text-right">
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setOpenMenu(
-                              openMenu === project.id
-                                ? null
-                                : project.id,
-                            )
-                          }
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-black/[0.05]"
-                        >
-                          <MoreHorizontal
-                            size={18}
-                            strokeWidth={1.5}
-                          />
-                        </button>
-
-                        {openMenu === project.id && (
-
-                          <div className="absolute right-6 top-14 z-20 w-48 rounded-xl border border-black/10 bg-white p-1.5 text-left shadow-xl">
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                startEdit(project)
-                              }
-                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm hover:bg-black/[0.04]"
-                            >
-                              <Pencil size={15} />
-                              Edit
-                            </button>
-
-                            <a
-                              href={
-                                project.officialUrl || '#'
-                              }
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={() =>
-                                setOpenMenu(null)
-                              }
-                              className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm hover:bg-black/[0.04]"
-                            >
-                              <ExternalLink size={15} />
-                              Preview
-                            </a>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                togglePublished(project)
-                              }
-                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm hover:bg-black/[0.04]"
-                            >
-                              {project.published ? (
-                                <EyeOff size={15} />
-                              ) : (
-                                <Eye size={15} />
-                              )}
-
-                              {project.published
-                                ? 'Hide'
-                                : 'Publish'}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                deleteProject(
-                                  project.id,
-                                )
-                              }
-                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-red-600 hover:bg-red-50"
-                            >
-                              <Trash2 size={15} />
-                              Delete
-                            </button>
-
-                          </div>
-
-                        )}
-
-                      </td>
-
-                    </tr>
-
-                  ),
-                )}
-
-              </tbody>
-
-            </table>
-
-          </div>
-
-          {/* MOBILE */}
-
-          <div className="divide-y divide-black/[0.06] lg:hidden">
-
-            {filteredProjects.map(
-              (project) => (
-
-                <div
-                  key={project.id}
-                  className="p-5"
-                >
-
-                  <div className="flex items-start justify-between gap-4">
-
+        {/* VIEW 1: DESKTOP HIGH-DENSITY TABLE (Visible on >= lg) */}
+        <div className="mt-5 hidden overflow-visible rounded-xl border border-black/[0.08] bg-white shadow-xs lg:block">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead>
+              <tr className="border-b border-black/[0.07] bg-[#f7f5f0]/70 font-mono text-[9px] uppercase tracking-wider text-black/45">
+                <th className="px-5 py-3">Project</th>
+                <th className="px-4 py-3">Category</th>
+                <th className="px-4 py-3">Capacity</th>
+                <th className="px-4 py-3">Healthcare Benefit</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-5 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-black/[0.05]">
+              {filteredProjects.map((p) => (
+                <tr key={p.id} className="transition-colors hover:bg-neutral-50/70">
+                  <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
-
-                      <div className="flex h-11 w-14 items-center justify-center overflow-hidden rounded-lg bg-[#f0ede6]">
-
-                        {project.images?.[0] ? (
-                          <img
-                            src={project.images[0]}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
+                      <div className="flex h-10 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-black/[0.06] bg-[#f0ede6]">
+                        {p.images?.[0] ? (
+                          <img src={p.images[0]} alt="" className="h-full w-full object-cover" />
                         ) : (
-                          <span className="font-display text-lg text-black/20">
-                            {project.name?.charAt(0) || '?'}
+                          <span className="font-display text-sm text-black/30">
+                            {p.name?.charAt(0) || '•'}
                           </span>
                         )}
-
                       </div>
-
-                      <div>
-
-                        <p className="font-medium">
-                          {project.name}
-                        </p>
-
-                        <p className="mt-1 text-xs text-black/40">
-                          {project.category}
-                        </p>
-
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-[#242321]">{p.name}</p>
+                        <p className="truncate font-mono text-[10px] text-black/40">/{p.slug}</p>
                       </div>
-
                     </div>
+                  </td>
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setOpenMenu(
-                          openMenu === project.id
-                            ? null
-                            : project.id,
-                        )
-                      }
-                      className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-black/[0.05]"
-                    >
-                      <MoreHorizontal size={18} />
-                    </button>
+                  <td className="px-4 py-3.5 font-medium text-black/60">{p.category || '—'}</td>
 
-                  </div>
+                  <td className="px-4 py-3.5 text-black/60">
+                    {p.userCount ? `${p.userCount} users` : '—'}
+                  </td>
 
-                  <div className="mt-5 grid grid-cols-2 gap-4">
-
-                    <div>
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-black/30">
-                        Users
-                      </p>
-
-                      <p className="mt-1 text-sm">
-                        {project.userCount || '—'}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-black/30">
-                        Healthcare
-                      </p>
-
-                      <p className="mt-1 text-sm">
-                        {getHealthcareStatusLabel(
-                          project.healthcareStatus,
-                        )}
-                      </p>
-                    </div>
-
-                  </div>
-
-                  <div className="mt-5">
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        togglePublished(project)
-                      }
-                      className={`rounded-full px-3 py-1 text-xs ${
-                        project.published
-                          ? 'bg-black text-white'
-                          : 'bg-black/[0.05] text-black/45'
+                  <td className="px-4 py-3.5">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold ${
+                        p.healthcareStatus === 'yes'
+                          ? 'bg-[#ece7da] text-[#765a2e]'
+                          : 'bg-black/[0.04] text-black/45'
                       }`}
                     >
-                      {project.published
-                        ? 'Published'
-                        : 'Hidden'}
+                      {p.healthcareStatus === 'yes' && <HeartHandshake size={10} />}
+                      {getHealthcareStatusLabel(p.healthcareStatus)}
+                    </span>
+                  </td>
+
+                  <td className="px-4 py-3.5">
+                    <button
+                      type="button"
+                      onClick={() => togglePublished(p)}
+                      className={`rounded-full px-2.5 py-0.5 text-[9px] font-semibold transition ${
+                        p.published
+                          ? 'bg-[#242321] text-white hover:bg-black'
+                          : 'bg-black/[0.06] text-black/45 hover:bg-black/10'
+                      }`}
+                    >
+                      {p.published ? 'Published' : 'Hidden'}
                     </button>
+                  </td>
 
-                  </div>
+                  <td className="relative px-5 py-3.5 text-right">
+                    <div className="inline-flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(p)}
+                        className="rounded-lg p-1.5 text-black/50 hover:bg-black/5 hover:text-black"
+                        title="Edit project"
+                      >
+                        <Pencil size={13} />
+                      </button>
 
-                  {openMenu === project.id && (
-
-                    <div className="mt-4 flex flex-wrap gap-2 border-t border-black/[0.06] pt-4">
+                      {p.officialUrl && (
+                        <a
+                          href={p.officialUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-lg p-1.5 text-black/50 hover:bg-black/5 hover:text-black"
+                          title="Open live URL"
+                        >
+                          <ArrowUpRight size={14} />
+                        </a>
+                      )}
 
                       <button
                         type="button"
-                        onClick={() =>
-                          startEdit(project)
-                        }
-                        className="flex items-center gap-2 rounded-lg bg-black/[0.04] px-3 py-2 text-xs"
+                        onClick={() => deleteProject(p.id)}
+                        className="rounded-lg p-1.5 text-red-500 hover:bg-red-50"
+                        title="Delete project"
                       >
-                        <Pencil size={14} />
-                        Edit
+                        <Trash2 size={13} />
                       </button>
-
-                      <a
-                        href={
-                          project.officialUrl || '#'
-                        }
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() =>
-                          setOpenMenu(null)
-                        }
-                        className="flex items-center gap-2 rounded-lg bg-black/[0.04] px-3 py-2 text-xs"
-                      >
-                        <ExternalLink size={14} />
-                        Preview
-                      </a>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          togglePublished(project)
-                        }
-                        className="flex items-center gap-2 rounded-lg bg-black/[0.04] px-3 py-2 text-xs"
-                      >
-                        {project.published ? (
-                          <EyeOff size={14} />
-                        ) : (
-                          <Eye size={14} />
-                        )}
-
-                        {project.published
-                          ? 'Hide'
-                          : 'Publish'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          deleteProject(
-                            project.id,
-                          )
-                        }
-                        className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600"
-                      >
-                        <Trash2 size={14} />
-                        Delete
-                      </button>
-
                     </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-                  )}
-
+        {/* VIEW 2: RESPONSIVE DOSSIER CARDS (Visible on < lg, Phones & Tablets) */}
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:hidden">
+          {filteredProjects.map((p) => (
+            <div
+              key={p.id}
+              className="flex flex-col justify-between rounded-xl border border-black/[0.08] bg-white p-4 shadow-2xs"
+            >
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-black/[0.06] bg-[#f0ede6]">
+                    {p.images?.[0] ? (
+                      <img src={p.images[0]} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="font-display font-medium text-black/30">
+                        {p.name?.charAt(0) || '•'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-[#242321]">{p.name}</p>
+                    <p className="truncate font-mono text-[10px] text-black/40">/{p.slug}</p>
+                  </div>
                 </div>
 
-              ),
-            )}
+                {/* Micro Badges */}
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  <span className="rounded bg-black/[0.04] px-2 py-0.5 text-[9px] font-medium text-black/60">
+                    {p.category || 'Product'}
+                  </span>
 
-          </div>
+                  <span
+                    className={`rounded px-2 py-0.5 text-[9px] font-medium ${
+                      p.healthcareStatus === 'yes'
+                        ? 'bg-[#ece7da] text-[#765a2e]'
+                        : 'bg-black/[0.04] text-black/45'
+                    }`}
+                  >
+                    {getHealthcareStatusLabel(p.healthcareStatus)}
+                  </span>
 
-          {filteredProjects.length === 0 && (
+                  {p.userCount && (
+                    <span className="rounded bg-black/[0.04] px-2 py-0.5 text-[9px] font-medium text-black/60">
+                      {p.userCount} Users
+                    </span>
+                  )}
+                </div>
+              </div>
 
-            <div className="px-6 py-20 text-center">
+              {/* Action Ribbon */}
+              <div className="mt-4 flex items-center justify-between border-t border-black/[0.05] pt-3">
+                <button
+                  type="button"
+                  onClick={() => togglePublished(p)}
+                  className={`rounded-full px-2.5 py-0.5 text-[9px] font-semibold ${
+                    p.published ? 'bg-[#242321] text-white' : 'bg-black/[0.06] text-black/45'
+                  }`}
+                >
+                  {p.published ? 'Published' : 'Hidden'}
+                </button>
 
-              <p className="font-display text-2xl">
-                No projects found.
-              </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => startEdit(p)}
+                    className="rounded-md border border-black/10 px-2.5 py-1 text-[10px] font-medium text-black/75 hover:bg-black/5"
+                  >
+                    Edit
+                  </button>
 
-              <p className="mt-2 text-sm text-black/40">
-                Try changing your search or filter.
-              </p>
+                  {p.officialUrl && (
+                    <a
+                      href={p.officialUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-md border border-black/10 p-1 text-black/60 hover:bg-black/5"
+                    >
+                      <ArrowUpRight size={12} />
+                    </a>
+                  )}
 
+                  <button
+                    type="button"
+                    onClick={() => deleteProject(p.id)}
+                    className="rounded-md border border-red-200 p-1 text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
             </div>
-
-          )}
-
+          ))}
         </div>
+
+        {/* EMPTY STATE */}
+        {filteredProjects.length === 0 && (
+          <div className="mt-6 rounded-xl border border-dashed border-black/15 bg-white py-14 text-center">
+            <p className="font-display text-lg text-black/40">No projects found</p>
+            <p className="mt-1 text-xs text-black/35">Adjust your active filter or search phrase.</p>
+          </div>
+        )}
 
       </div>
 
-      {/* =======================================================
-          ADD / EDIT MODAL
-      ======================================================= */}
-
+      {/* =========================================================
+          RESPONSIVE ADD / EDIT MODAL
+      ========================================================= */}
       {isModalOpen && (
-
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 px-4 py-8 backdrop-blur-sm">
-
-          <div className="mx-auto max-w-4xl rounded-2xl bg-[#f7f5f0] shadow-2xl">
-
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-2 backdrop-blur-xs sm:p-4">
+          <div className="my-auto flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-[#f7f5f0] shadow-2xl">
+            
             {/* MODAL HEADER */}
-
-            <div className="flex items-center justify-between border-b border-black/10 px-6 py-5 sm:px-8">
-
+            <div className="flex items-center justify-between border-b border-black/[0.08] bg-white px-5 py-3.5 sm:px-6">
               <div>
-
-                <p className="text-[10px] uppercase tracking-[0.3em] text-[#9b7a42]">
-                  {editingProject
-                    ? 'Edit Project'
-                    : 'New Project'}
-                </p>
-
-                <h2 className="mt-2 font-display text-3xl">
-                  {editingProject
-                    ? editingProject.name
-                    : 'Add Project'}
+                <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-[#9b7a42]">
+                  {editingProject ? 'Editor' : 'New Publication'}
+                </span>
+                <h2 className="font-display text-xl font-medium sm:text-2xl">
+                  {editingProject ? editingProject.name : 'Create Project'}
                 </h2>
-
               </div>
-
               <button
                 type="button"
                 onClick={closeModal}
                 disabled={saving}
-                className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-black/[0.05]"
+                className="rounded-lg p-1 text-black/50 hover:bg-black/5 hover:text-black"
               >
-                <X size={19} />
+                <X size={18} />
               </button>
-
             </div>
 
-            <div className="space-y-10 px-6 py-8 sm:px-8">
-
-              {/* 01 BASIC */}
-
-              <section>
-
-                <SectionHeading
-                  number="01"
-                  title="Basic Information"
-                  description="Define the project and how it should be presented."
-                />
-
-                <div className="mt-6 grid gap-5 md:grid-cols-2">
-
-                  <Field
-                    label="Project Name"
-                    required
-                  >
+            {/* FORM BODY (SCROLLABLE) */}
+            <div className="flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
+              
+              {/* SECTION 1: IDENTITY */}
+              <div className="rounded-xl border border-black/[0.07] bg-white p-4 sm:p-5">
+                <SectionHeader number="01" title="Core Identity" />
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label="Project Name" required>
                     <input
                       type="text"
                       value={projectForm.name}
-                      onChange={(event) =>
-                        updateForm(
-                          'name',
-                          event.target.value,
-                        )
-                      }
-                      placeholder="e.g. Keshava CRM"
+                      onChange={(e) => updateForm('name', e.target.value)}
+                      placeholder="e.g. MedCare Engine"
                       className={inputClass}
                     />
                   </Field>
 
-                  <Field
-                    label="Category"
-                    required
-                  >
+                  <Field label="Category" required>
                     <select
                       value={projectForm.category}
-                      onChange={(event) =>
-                        updateForm(
-                          'category',
-                          event.target.value,
-                        )
-                      }
+                      onChange={(e) => updateForm('category', e.target.value)}
                       className={inputClass}
                     >
-                      {PROJECT_CATEGORIES.map(
-                        (category) => (
-                          <option
-                            key={category}
-                            value={category}
-                          >
-                            {category}
-                          </option>
-                        ),
-                      )}
+                      {PROJECT_CATEGORIES.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
                     </select>
                   </Field>
 
-                  <Field
-                    label="URL Slug"
-                    hint="Used for the public project URL."
-                  >
+                  <Field label="URL Slug" hint="Used in /work/:slug">
                     <input
                       type="text"
                       value={projectForm.slug}
-                      onChange={(event) =>
-                        updateForm(
-                          'slug',
-                          event.target.value,
-                        )
-                      }
-                      placeholder="keshava-crm"
+                      onChange={(e) => updateForm('slug', e.target.value)}
+                      placeholder="medcare-engine"
                       className={inputClass}
                     />
                   </Field>
 
-                  <Field label="Development Duration">
-
+                  <Field label="Duration">
                     <div className="relative">
-
                       <Clock3
-                        size={16}
-                        className="absolute left-4 top-1/2 -translate-y-1/2 text-black/30"
+                        size={13}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-black/35"
                       />
-
                       <input
                         type="text"
                         value={projectForm.duration}
-                        onChange={(event) =>
-                          updateForm(
-                            'duration',
-                            event.target.value,
-                          )
-                        }
-                        placeholder="e.g. 4 months"
-                        className={`${inputClass} pl-11`}
+                        onChange={(e) => updateForm('duration', e.target.value)}
+                        placeholder="e.g. 4 Months"
+                        className={`${inputClass} pl-9`}
                       />
-
                     </div>
-
                   </Field>
-
                 </div>
+              </div>
 
-              </section>
-
-              {/* 02 TECHNOLOGY */}
-
-              <section>
-
-                <SectionHeading
-                  number="02"
-                  title="Technology"
-                  description="Add the technologies used to build the project."
-                />
-
-                <div className="mt-6">
-
-                  <Field
-                    label="Tech Stack"
-                    hint="Type a technology and press Enter."
+              {/* SECTION 2: GALLERY & COVER */}
+              <div className="rounded-xl border border-black/[0.07] bg-white p-4 sm:p-5">
+                <div className="flex items-start justify-between">
+                  <SectionHeader
+                    number="02"
+                    title="Gallery Images"
+                    description="First slot is automatically used as the cover."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    disabled={saving}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#242321] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-black"
                   >
-
-                    <input
-                      type="text"
-                      onKeyDown={addTechStack}
-                      placeholder="React, Firebase, Tailwind CSS..."
-                      className={inputClass}
-                    />
-
-                  </Field>
-
-                  {projectForm.techStack.length > 0 && (
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-
-                      {projectForm.techStack.map(
-                        (stack) => (
-
-                          <button
-                            type="button"
-                            key={stack}
-                            onClick={() =>
-                              removeTechStack(stack)
-                            }
-                            className="flex items-center gap-2 rounded-full bg-black/[0.06] px-3 py-1.5 text-xs"
-                          >
-                            {stack}
-                            <X size={12} />
-                          </button>
-
-                        ),
-                      )}
-
-                    </div>
-
-                  )}
-
+                    <Upload size={12} /> Add
+                  </button>
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageSelection}
+                    className="hidden"
+                  />
                 </div>
 
-              </section>
-
-              {/* 03 LINKS */}
-
-              <section>
-
-                <SectionHeading
-                  number="03"
-                  title="Links & Access"
-                  description="Control where visitors can explore the project."
-                />
-
-                <div className="mt-6 grid gap-5 md:grid-cols-2">
-
-                  <Field label="Official Project URL">
-
-                    <div className="relative">
-
-                      <LinkIcon
-                        size={16}
-                        className="absolute left-4 top-1/2 -translate-y-1/2 text-black/30"
-                      />
-
-                      <input
-                        type="url"
-                        value={projectForm.officialUrl}
-                        onChange={(event) =>
-                          updateForm(
-                            'officialUrl',
-                            event.target.value,
-                          )
-                        }
-                        placeholder="https://..."
-                        className={`${inputClass} pl-11`}
-                      />
-
-                    </div>
-
-                  </Field>
-
-                  <Field
-                    label="Demo URL"
-                    hint="Optional."
-                  >
-
-                    <div className="relative">
-
-                      <LinkIcon
-                        size={16}
-                        className="absolute left-4 top-1/2 -translate-y-1/2 text-black/30"
-                      />
-
-                      <input
-                        type="url"
-                        value={projectForm.demoUrl}
-                        onChange={(event) =>
-                          updateForm(
-                            'demoUrl',
-                            event.target.value,
-                          )
-                        }
-                        placeholder="https://..."
-                        className={`${inputClass} pl-11`}
-                      />
-
-                    </div>
-
-                  </Field>
-
-                </div>
-
-                <div className="mt-6 rounded-xl border border-black/10 bg-white p-5">
-
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
-                    <div>
-
-                      <p className="text-sm font-medium">
-                        Is login required?
-                      </p>
-
-                      <p className="mt-1 text-xs leading-5 text-black/40">
-                        Tell visitors whether this project requires
-                        authorized access.
-                      </p>
-
-                    </div>
-
-                    <div className="flex rounded-lg bg-black/[0.04] p-1">
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateForm(
-                            'requiresLogin',
-                            true,
-                          )
-                        }
-                        className={`rounded-md px-5 py-2 text-xs ${
-                          projectForm.requiresLogin
-                            ? 'bg-black text-white'
-                            : 'text-black/45'
-                        }`}
+                {projectForm.images.length > 0 ? (
+                  <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                    {projectForm.images.map((item, idx) => (
+                      <div
+                        key={item.id}
+                        className="group relative aspect-video overflow-hidden rounded-lg border border-black/10 bg-[#f0ede6]"
                       >
-                        Yes
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateForm(
-                            'requiresLogin',
-                            false,
-                          )
-                        }
-                        className={`rounded-md px-5 py-2 text-xs ${
-                          !projectForm.requiresLogin
-                            ? 'bg-black text-white'
-                            : 'text-black/45'
-                        }`}
-                      >
-                        No
-                      </button>
-
-                    </div>
-
-                  </div>
-
-                  {projectForm.requiresLogin && (
-
-                    <div className="mt-5 border-t border-black/[0.06] pt-5">
-
-                      <Field label="Client Login Notice">
-
-                        <textarea
-                          value={
-                            projectForm.loginNotice
-                          }
-                          onChange={(event) =>
-                            updateForm(
-                              'loginNotice',
-                              event.target.value,
-                            )
-                          }
-                          rows={3}
-                          className={textareaClass}
+                        <img
+                          src={item.preview || item.url}
+                          alt=""
+                          className="h-full w-full object-cover"
                         />
 
-                      </Field>
-
-                    </div>
-
-                  )}
-
-                </div>
-
-              </section>
-
-              {/* 04 MEDIA */}
-
-              <section>
-
-                <SectionHeading
-                  number="04"
-                  title="Project Media"
-                  description="Upload project images and optionally add a project video."
-                />
-
-                <div className="mt-6 space-y-5">
-
-                  {/* IMAGE UPLOAD */}
-
-                  <div className="rounded-xl border border-black/10 bg-white p-6">
-
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
-                      <div>
-
-                        <div className="flex items-center gap-3">
-
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#f0ede6]">
-
-                            <ImagePlus
-                              size={18}
-                              strokeWidth={1.4}
-                            />
-
-                          </div>
-
-                          <div>
-
-                            <p className="text-sm font-medium">
-                              Project Images
-                            </p>
-
-                            <p className="text-xs text-black/40">
-                              The first image becomes the cover image.
-                            </p>
-
-                          </div>
-
+                        <div className="absolute left-1.5 top-1.5">
+                          {idx === 0 ? (
+                            <span className="flex items-center gap-1 rounded bg-[#242321] px-1.5 py-0.5 text-[8px] font-semibold uppercase text-white shadow">
+                              <Star size={8} className="fill-current text-[#c6a15b]" /> Cover
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setCoverImage(idx)}
+                              className="rounded bg-black/60 px-1 py-0.5 text-[8px] text-white opacity-0 transition group-hover:opacity-100"
+                            >
+                              Make Cover
+                            </button>
+                          )}
                         </div>
 
+                        <button
+                          type="button"
+                          onClick={() => removeImage(item.id)}
+                          className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white shadow hover:bg-red-700"
+                        >
+                          <X size={11} />
+                        </button>
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          imageInputRef.current?.click()
-                        }
-                        disabled={saving}
-                        className="flex items-center justify-center gap-2 rounded-lg bg-black px-4 py-2.5 text-xs text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <Upload size={14} />
-                        Add Images
-                      </button>
-
-                      <input
-                        ref={imageInputRef}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={handleImageSelection}
-                        className="hidden"
-                      />
-
-                    </div>
-
-                    {/* IMAGE PREVIEWS */}
-
-                    {projectForm.images.length > 0 ? (
-
-                      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-
-                        {projectForm.images.map(
-                          (image, index) => {
-
-                            const src =
-                              typeof image === 'string'
-                                ? image
-                                : image.preview
-
-                            return (
-                              <div
-                                key={
-                                  image.id ||
-                                  `${src}-${index}`
-                                }
-                                className="group relative aspect-[4/3] overflow-hidden rounded-xl bg-[#f0ede6]"
-                              >
-
-                                <img
-                                  src={src}
-                                  alt={`Project preview ${index + 1}`}
-                                  className="h-full w-full object-cover"
-                                />
-
-                                {index === 0 && (
-                                  <span className="absolute left-2 top-2 rounded-full bg-black px-2.5 py-1 text-[10px] text-white">
-                                    Cover
-                                  </span>
-                                )}
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    removeImage(
-                                      image.id ||
-                                        `existing-${index}`,
-                                    )
-                                  }
-                                  className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-black shadow-sm transition hover:bg-white"
-                                  aria-label="Remove image"
-                                >
-                                  <X size={14} />
-                                </button>
-
-                              </div>
-                            )
-                          },
-                        )}
-
-                      </div>
-
-                    ) : (
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          imageInputRef.current?.click()
-                        }
-                        className="mt-5 flex w-full flex-col items-center justify-center rounded-xl border border-dashed border-black/15 bg-[#f7f5f0] px-6 py-12 text-center transition hover:border-black/25"
-                      >
-
-                        <ImagePlus
-                          size={28}
-                          strokeWidth={1.2}
-                          className="text-black/30"
-                        />
-
-                        <p className="mt-4 text-sm font-medium">
-                          Upload project images
-                        </p>
-
-                        <p className="mt-1 text-xs text-black/40">
-                          PNG, JPG, WEBP and other browser-supported images
-                        </p>
-
-                      </button>
-
-                    )}
-
+                    ))}
                   </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    className="mt-3 flex w-full flex-col items-center justify-center rounded-lg border border-dashed border-black/15 bg-[#f7f5f0] py-6 hover:border-black/30"
+                  >
+                    <ImagePlus size={20} className="text-black/35" />
+                    <p className="mt-1 text-xs font-semibold text-black/60">Upload screenshots</p>
+                  </button>
+                )}
 
-                  {/* VIDEO */}
-
-                  <div className="rounded-xl border border-black/10 bg-white p-6">
-
-                    <div className="flex items-center gap-3">
-
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#f0ede6]">
-
-                        <ClapperboardIcon
-                          size={18}
-                          strokeWidth={1.4}
-                        />
-
-                      </div>
-
-                      <div>
-
-                        <p className="text-sm font-medium">
-                          Project Video
-                        </p>
-
-                        <p className="text-xs text-black/40">
-                          Optional YouTube video
-                        </p>
-
-                      </div>
-
-                    </div>
-
+                <div className="mt-3 border-t border-black/[0.05] pt-3">
+                  <Field label="YouTube Tour URL">
                     <input
                       type="url"
                       value={projectForm.youtubeUrl}
-                      onChange={(event) =>
-                        updateForm(
-                          'youtubeUrl',
-                          event.target.value,
-                        )
-                      }
-                      placeholder="https://youtube.com/watch?v=..."
-                      className={`${inputClass} mt-5`}
-                    />
-
-                  </div>
-
-                </div>
-
-              </section>
-
-              {/* 05 DETAILS */}
-
-              <section>
-
-                <SectionHeading
-                  number="05"
-                  title="Project Details"
-                  description="Information displayed alongside the project."
-                />
-
-                <div className="mt-6 grid gap-5 md:grid-cols-2">
-
-                  <Field label="Number of Users">
-
-                    <div className="relative">
-
-                      <Users
-                        size={16}
-                        className="absolute left-4 top-1/2 -translate-y-1/2 text-black/30"
-                      />
-
-                      <input
-                        type="number"
-                        min="0"
-                        value={projectForm.userCount}
-                        onChange={(event) =>
-                          updateForm(
-                            'userCount',
-                            event.target.value,
-                          )
-                        }
-                        placeholder="e.g. 25"
-                        className={`${inputClass} pl-11`}
-                      />
-
-                    </div>
-
-                  </Field>
-
-                </div>
-
-              </section>
-
-              {/* 06 HEALTHCARE */}
-
-              <section>
-
-                <SectionHeading
-                  number="06"
-                  title="Healthcare Commitment"
-                  description="Record how this project relates to Abhinava's healthcare commitment."
-                />
-
-                <div className="mt-6 rounded-xl border border-black/10 bg-white p-5">
-
-                  <p className="text-sm font-medium">
-                    Was this project utilised for the healthcare commitment?
-                  </p>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
-
-                    <ChoiceButton
-                      active={
-                        projectForm.healthcareStatus ===
-                        'yes'
-                      }
-                      onClick={() => {
-
-                        const allocation =
-                          getHealthcareAllocation(
-                            projectForm.projectAmount,
-                          )
-
-                        setProjectForm(
-                          (current) => ({
-                            ...current,
-                            healthcareStatus:
-                              'yes',
-                            healthcareAllocation:
-                              allocation || '',
-                          }),
-                        )
-
-                      }}
-                    >
-                      Yes
-                    </ChoiceButton>
-
-                    <ChoiceButton
-                      active={
-                        projectForm.healthcareStatus ===
-                        'earlier-work'
-                      }
-                      onClick={() =>
-                        setProjectForm(
-                          (current) => ({
-                            ...current,
-                            healthcareStatus:
-                              'earlier-work',
-                            healthcareAllocation:
-                              '',
-                            amountUtilised: '',
-                          }),
-                        )
-                      }
-                    >
-                      Earlier Work
-                    </ChoiceButton>
-
-                    <ChoiceButton
-                      active={
-                        projectForm.healthcareStatus ===
-                        'not-applicable'
-                      }
-                      onClick={() =>
-                        setProjectForm(
-                          (current) => ({
-                            ...current,
-                            healthcareStatus:
-                              'not-applicable',
-                            healthcareAllocation:
-                              '',
-                            amountUtilised: '',
-                          }),
-                        )
-                      }
-                    >
-                      Not Applicable
-                    </ChoiceButton>
-
-                  </div>
-
-                  {projectForm.healthcareStatus ===
-                    'yes' && (
-
-                    <div className="mt-6 border-t border-black/[0.06] pt-6">
-
-                      <div className="grid gap-5 md:grid-cols-3">
-
-                        <Field label="Project Amount">
-
-                          <input
-                            type="number"
-                            min="0"
-                            value={
-                              projectForm.projectAmount
-                            }
-                            onChange={(event) =>
-                              updateProjectAmount(
-                                event.target.value,
-                              )
-                            }
-                            placeholder="80000"
-                            className={inputClass}
-                          />
-
-                        </Field>
-
-                        <Field
-                          label="Healthcare Allocation"
-                          hint="Automatically calculated at 70%."
-                        >
-
-                          <input
-                            type="text"
-                            value={formatCurrency(
-                              projectForm.healthcareAllocation,
-                            )}
-                            readOnly
-                            className={`${inputClass} bg-black/[0.03]`}
-                          />
-
-                        </Field>
-
-                        <Field label="Amount Utilised">
-
-                          <input
-                            type="number"
-                            min="0"
-                            value={
-                              projectForm.amountUtilised
-                            }
-                            onChange={(event) =>
-                              updateForm(
-                                'amountUtilised',
-                                event.target.value,
-                              )
-                            }
-                            placeholder="50000"
-                            className={inputClass}
-                          />
-
-                        </Field>
-
-                      </div>
-
-                      <div className="mt-5 rounded-lg bg-[#f7f5f0] p-4">
-
-                        <div className="flex items-center gap-3">
-
-                          <HeartHandshake
-                            size={18}
-                            strokeWidth={1.4}
-                            className="text-[#9b7a42]"
-                          />
-
-                          <p className="text-sm font-medium">
-                            Healthcare utilisation
-                          </p>
-
-                        </div>
-
-                        <textarea
-                          value={
-                            projectForm.originNote
-                          }
-                          onChange={(event) =>
-                            updateForm(
-                              'originNote',
-                              event.target.value,
-                            )
-                          }
-                          rows={4}
-                          placeholder="Describe how the healthcare allocation was utilised..."
-                          className={`${textareaClass} mt-4`}
-                        />
-
-                      </div>
-
-                    </div>
-
-                  )}
-
-                  {projectForm.healthcareStatus ===
-                    'earlier-work' && (
-
-                    <div className="mt-6 border-t border-black/[0.06] pt-6">
-
-                      <Field
-                        label="Public Note"
-                        hint="Explain why this project does not fall under the current Abhinava healthcare commitment."
-                      >
-
-                        <textarea
-                          value={
-                            projectForm.originNote
-                          }
-                          onChange={(event) =>
-                            updateForm(
-                              'originNote',
-                              event.target.value,
-                            )
-                          }
-                          rows={4}
-                          className={textareaClass}
-                        />
-
-                      </Field>
-
-                    </div>
-
-                  )}
-
-                </div>
-
-              </section>
-
-              {/* 07 SEO */}
-
-              <section>
-
-                <SectionHeading
-                  number="07"
-                  title="SEO"
-                  description="Control how this project can be discovered through search."
-                />
-
-                <div className="mt-6 space-y-5">
-
-                  <Field label="SEO Title">
-
-                    <input
-                      type="text"
-                      value={projectForm.seoTitle}
-                      onChange={(event) =>
-                        updateForm(
-                          'seoTitle',
-                          event.target.value,
-                        )
-                      }
-                      placeholder="Project Name | Abhinava Softwares"
+                      onChange={(e) => updateForm('youtubeUrl', e.target.value)}
+                      placeholder="https://youtu.be/... or https://youtube.com/watch?v=..."
                       className={inputClass}
                     />
-
                   </Field>
+                </div>
+              </div>
 
-                  <Field label="SEO Description">
-
-                    <textarea
-                      value={
-                        projectForm.seoDescription
-                      }
-                      onChange={(event) =>
-                        updateForm(
-                          'seoDescription',
-                          event.target.value,
-                        )
-                      }
-                      rows={3}
-                      placeholder="Describe this project for search engines..."
-                      className={textareaClass}
+              {/* SECTION 3: TECH STACK & ACCESS */}
+              <div className="rounded-xl border border-black/[0.07] bg-white p-4 sm:p-5">
+                <SectionHeader number="03" title="Tech Stack & Authorization" />
+                <div className="mt-3 space-y-3">
+                  <Field label="Add Stack" hint="Press Enter">
+                    <input
+                      type="text"
+                      onKeyDown={addTechStack}
+                      placeholder="React, Next.js, Node.js..."
+                      className={inputClass}
                     />
-
                   </Field>
 
-                </div>
-
-              </section>
-
-              {/* 08 PUBLISH */}
-
-              <section>
-
-                <SectionHeading
-                  number="08"
-                  title="Publishing"
-                  description="Control whether this project appears on the public website."
-                />
-
-                <div className="mt-6 rounded-xl border border-black/10 bg-white p-5">
-
-                  <div className="flex items-center justify-between gap-5">
-
-                    <div>
-
-                      <p className="text-sm font-medium">
-                        Publish this project
-                      </p>
-
-                      <p className="mt-1 text-xs text-black/40">
-                        Hidden projects remain available in the admin
-                        portal but are not shown publicly.
-                      </p>
-
+                  {projectForm.techStack.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {projectForm.techStack.map((stack) => (
+                        <span
+                          key={stack}
+                          className="inline-flex items-center gap-1 rounded bg-[#f7f5f0] px-2 py-0.5 text-[10px] text-black/75"
+                        >
+                          {stack}
+                          <button
+                            type="button"
+                            onClick={() => removeTechStack(stack)}
+                            className="text-black/40 hover:text-black"
+                          >
+                            <X size={11} />
+                          </button>
+                        </span>
+                      ))}
                     </div>
+                  )}
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateForm(
-                          'published',
-                          !projectForm.published,
-                        )
-                      }
-                      className={`relative h-7 w-12 rounded-full transition ${
-                        projectForm.published
-                          ? 'bg-black'
-                          : 'bg-black/15'
-                      }`}
-                    >
-
-                      <span
-                        className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
-                          projectForm.published
-                            ? 'left-6'
-                            : 'left-1'
-                        }`}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label="User Scale / Reach">
+                      <input
+                        type="number"
+                        value={projectForm.userCount}
+                        onChange={(e) => updateForm('userCount', e.target.value)}
+                        placeholder="e.g. 1000"
+                        className={inputClass}
                       />
+                    </Field>
 
-                    </button>
-
+                    <div className="flex flex-col justify-end">
+                      <label className="flex h-9 items-center justify-between rounded-xl border border-black/10 bg-[#f7f5f0]/50 px-3 text-xs">
+                        <span>Requires Auth/Login?</span>
+                        <input
+                          type="checkbox"
+                          checked={projectForm.requiresLogin}
+                          onChange={(e) => updateForm('requiresLogin', e.target.checked)}
+                          className="h-4 w-4 accent-black"
+                        />
+                      </label>
+                    </div>
                   </div>
+                </div>
+              </div>
 
+              {/* SECTION 4: HEALTHCARE ALLOCATION */}
+              <div className="rounded-xl border border-black/[0.07] bg-white p-4 sm:p-5">
+                <SectionHeader number="04" title="Healthcare Pledge" />
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <ChoicePill
+                    active={projectForm.healthcareStatus === 'yes'}
+                    onClick={() => {
+                      const alloc = getHealthcareAllocation(projectForm.projectAmount)
+                      setProjectForm((c) => ({
+                        ...c,
+                        healthcareStatus: 'yes',
+                        healthcareAllocation: alloc || '',
+                      }))
+                    }}
+                  >
+                    Yes
+                  </ChoicePill>
+
+                  <ChoicePill
+                    active={projectForm.healthcareStatus === 'earlier-work'}
+                    onClick={() =>
+                      setProjectForm((c) => ({
+                        ...c,
+                        healthcareStatus: 'earlier-work',
+                        healthcareAllocation: '',
+                        amountUtilised: '',
+                      }))
+                    }
+                  >
+                    Earlier
+                  </ChoicePill>
+
+                  <ChoicePill
+                    active={projectForm.healthcareStatus === 'not-applicable'}
+                    onClick={() =>
+                      setProjectForm((c) => ({
+                        ...c,
+                        healthcareStatus: 'not-applicable',
+                        healthcareAllocation: '',
+                        amountUtilised: '',
+                      }))
+                    }
+                  >
+                    N/A
+                  </ChoicePill>
                 </div>
 
-              </section>
+                {projectForm.healthcareStatus === 'yes' && (
+                  <div className="mt-3 grid grid-cols-1 gap-3 border-t border-black/[0.05] pt-3 sm:grid-cols-3">
+                    <Field label="Total Deal (INR)">
+                      <input
+                        type="number"
+                        value={projectForm.projectAmount}
+                        onChange={(e) => updateProjectAmount(e.target.value)}
+                        placeholder="100000"
+                        className={inputClass}
+                      />
+                    </Field>
+
+                    <Field label="70% Allocation">
+                      <input
+                        type="text"
+                        value={formatCurrency(projectForm.healthcareAllocation)}
+                        readOnly
+                        className={`${inputClass} bg-black/5 font-semibold`}
+                      />
+                    </Field>
+
+                    <Field label="Amount Utilised">
+                      <input
+                        type="number"
+                        value={projectForm.amountUtilised}
+                        onChange={(e) => updateForm('amountUtilised', e.target.value)}
+                        placeholder="50000"
+                        className={inputClass}
+                      />
+                    </Field>
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION 5: EXTERNAL URLS */}
+              <div className="rounded-xl border border-black/[0.07] bg-white p-4 sm:p-5">
+                <SectionHeader number="05" title="Deployment Links" />
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label="Official URL">
+                    <input
+                      type="url"
+                      value={projectForm.officialUrl}
+                      onChange={(e) => updateForm('officialUrl', e.target.value)}
+                      placeholder="https://..."
+                      className={inputClass}
+                    />
+                  </Field>
+
+                  <Field label="Demo Platform URL">
+                    <input
+                      type="url"
+                      value={projectForm.demoUrl}
+                      onChange={(e) => updateForm('demoUrl', e.target.value)}
+                      placeholder="https://demo..."
+                      className={inputClass}
+                    />
+                  </Field>
+                </div>
+              </div>
 
             </div>
 
-            {/* FOOTER */}
+            {/* MODAL FOOTER */}
+            <div className="flex items-center justify-between border-t border-black/[0.08] bg-white px-5 py-3">
+              <span className="font-mono text-[10px] text-black/45">
+                {uploadingImages
+                  ? 'Transferring media...'
+                  : saving
+                    ? 'Writing database...'
+                    : 'Ready'}
+              </span>
 
-            <div className="flex flex-col-reverse gap-3 border-t border-black/10 px-6 py-5 sm:flex-row sm:items-center sm:justify-end sm:px-8">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  disabled={saving}
+                  className="rounded-lg border border-black/15 bg-white px-3.5 py-1.5 text-xs font-medium text-black/70 hover:bg-neutral-50"
+                >
+                  Cancel
+                </button>
 
-              {(saving || uploadingImages) && (
-                <div className="mr-auto flex items-center gap-2 text-xs text-black/45">
-
-                  <Loader2
-                    size={14}
-                    className="animate-spin"
-                  />
-
-                  {uploadingImages
-                    ? 'Uploading images...'
-                    : 'Saving project...'}
-
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={closeModal}
-                disabled={saving}
-                className="rounded-xl border border-black/10 px-5 py-3 text-sm transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={
-                  editingProject
-                    ? saveEdit
-                    : createProject
-                }
-                disabled={
-                  saving || uploadingImages
-                }
-                className="flex items-center justify-center gap-2 rounded-xl bg-black px-6 py-3 text-sm text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-
-                {saving || uploadingImages ? (
-                  <>
-                    <Loader2
-                      size={15}
-                      className="animate-spin"
-                    />
-
-                    {uploadingImages
-                      ? 'Uploading...'
-                      : 'Saving...'}
-                  </>
-                ) : (
-                  editingProject
-                    ? 'Save Changes'
-                    : 'Add Project'
-                )}
-
-              </button>
-
+                <button
+                  type="button"
+                  onClick={editingProject ? handleUpdate : handleCreate}
+                  disabled={saving || uploadingImages}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#242321] px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-white hover:bg-black disabled:opacity-50"
+                >
+                  {saving || uploadingImages ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <CheckCircle2 size={13} />
+                  )}
+                  {editingProject ? 'Save' : 'Publish'}
+                </button>
+              </div>
             </div>
 
           </div>
-
         </div>
-
       )}
 
     </div>
@@ -2337,105 +1178,47 @@ export default function ProjectManagement() {
 }
 
 /* =============================================================
-   STYLES
+    SHARED STYLES & SUBCOMPONENTS
 ============================================================= */
 
 const inputClass =
-  'h-11 w-full rounded-xl border border-black/10 bg-white px-4 text-sm outline-none transition placeholder:text-black/25 focus:border-[#9b7a42]'
+  'h-9 w-full rounded-xl border border-black/10 bg-[#f7f5f0]/50 px-3 text-xs text-[#242321] outline-none transition placeholder:text-black/30 focus:border-[#9b7a42] focus:bg-white'
 
-const textareaClass =
-  'w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-sm leading-6 outline-none transition placeholder:text-black/25 focus:border-[#9b7a42]'
-
-/* =============================================================
-   FIELD
-============================================================= */
-
-function Field({
-  label,
-  required,
-  hint,
-  children,
-}) {
+function Field({ label, required, hint, children }) {
   return (
     <div>
-
-      <div className="mb-2 flex items-center justify-between gap-4">
-
-        <label className="text-xs font-medium text-black/65">
-
-          {label}
-
-          {required && (
-            <span className="ml-1 text-[#9b7a42]">
-              *
-            </span>
-          )}
-
+      <div className="mb-1 flex items-center justify-between text-[11px]">
+        <label className="font-medium text-black/75">
+          {label} {required && <span className="text-[#9b7a42]">*</span>}
         </label>
-
-        {hint && (
-          <span className="text-[10px] text-black/30">
-            {hint}
-          </span>
-        )}
-
+        {hint && <span className="font-mono text-[9px] text-black/35">{hint}</span>}
       </div>
-
       {children}
-
     </div>
   )
 }
 
-/* =============================================================
-   SECTION HEADING
-============================================================= */
-
-function SectionHeading({
-  number,
-  title,
-  description,
-}) {
+function SectionHeader({ number, title, description }) {
   return (
-    <div className="flex gap-4">
-
-      <span className="font-display text-sm text-[#9b7a42]">
-        {number}
-      </span>
-
-      <div>
-
-        <h3 className="font-display text-2xl">
-          {title}
-        </h3>
-
-        <p className="mt-1 text-xs leading-5 text-black/40">
-          {description}
-        </p>
-
+    <div>
+      <div className="flex items-center gap-1.5">
+        <span className="font-mono text-[10px] font-bold text-[#9b7a42]">{number}</span>
+        <h3 className="font-display text-sm font-semibold text-[#242321]">{title}</h3>
       </div>
-
+      {description && <p className="mt-0.5 text-[10px] text-black/45">{description}</p>}
     </div>
   )
 }
 
-/* =============================================================
-   CHOICE BUTTON
-============================================================= */
-
-function ChoiceButton({
-  active,
-  onClick,
-  children,
-}) {
+function ChoicePill({ active, onClick, children }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl border px-4 py-3 text-sm transition ${
+      className={`rounded-lg border py-1.5 text-[11px] font-medium transition ${
         active
           ? 'border-black bg-black text-white'
-          : 'border-black/10 bg-[#f7f5f0] text-black/55 hover:border-black/20'
+          : 'border-black/10 bg-[#f7f5f0] text-black/60 hover:border-black/20'
       }`}
     >
       {children}
